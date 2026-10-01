@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Processing…{% endblock %}
+{% block content %}
+<div class="hero" style="margin-top:3rem">
+  <h1>⏳ Processing…</h1>
+  <p class="hero__sub">Status: <strong>{{ status }}</strong></p>
+  <p class="text-muted">The model is still being processed. Refreshing in 3 seconds…</p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>setTimeout(() => location.reload(), 3000);</script>
+{% endblock %}

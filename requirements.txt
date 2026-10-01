@@ -1,0 +1,7 @@
+Flask==3.0.3
+python-dotenv==1.0.1
+pyOpenSSL==24.1.0          # dev HTTPS
+rarfile==4.1               # RAR extraction (needs system unrar)
+Pillow>=11.0.0             # texture downscale after extract (optional but recommended)
+Werkzeug==3.0.3
+pytest==8.2.2

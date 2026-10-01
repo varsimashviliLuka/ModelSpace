@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+
+{% block title %}3D Viewer — Gallery{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/gallery.css') }}" />
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Upload area ───────────────────────────────────────────── -->
+<section class="upload-zone">
+  <form id="upload-form"
+        action="{{ url_for('upload.upload_file') }}"
+        method="POST"
+        enctype="multipart/form-data">
+
+    <label class="file-drop" for="archive-input" id="drop-zone">
+      <span class="file-drop__icon">📦</span>
+      <span class="file-drop__text" id="drop-label">
+        Drop a <strong>.glb</strong> / <strong>.gltf</strong> / <strong>.obj</strong>
+        or a <strong>.zip</strong> / <strong>.rar</strong>, or <u>browse</u>
+      </span>
+      <input id="archive-input" type="file" name="archive"
+             accept=".glb,.gltf,.obj,.zip,.rar" hidden />
+    </label>
+
+    <!-- Optional custom name -->
+    <div class="upload-zone__name-row">
+      <input id="model-name-input"
+             type="text"
+             name="model_name"
+             placeholder="Model name (optional — leave blank to auto-name)"
+             maxlength="120"
+             class="text-input" />
+    </div>
+
+    <div class="upload-zone__footer">
+      <span class="text-muted" style="font-size:.8rem">Max {{ max_upload_mb }} MB · GLB / GLTF / OBJ · or ZIP / RAR</span>
+      <button type="submit" class="btn btn--primary upload-zone__btn"
+              id="upload-btn" disabled>
+        Upload &amp; Process
+      </button>
+    </div>
+
+  </form>
+
+  <div id="upload-progress" class="upload-progress" style="display:none">
+    <div class="upload-progress__bar" id="upload-progress-bar"></div>
+    <span id="upload-progress-text" class="upload-progress__text">Uploading…</span>
+  </div>
+</section>
+
+<!-- ── Gallery grid ──────────────────────────────────────────── -->
+{% if models %}
+<section class="gallery-section">
+  <h2 class="gallery-title">
+    Models
+    <span class="gallery-count">{{ models|length }}</span>
+  </h2>
+
+  <div class="gallery-grid">
+    {% for model in models %}
+    <article class="model-card" data-model-id="{{ model.model_id }}">
+
+      <a href="{{ url_for('viewer.view_model', model_id=model.model_id) }}"
+         class="model-card__thumb-link">
+        {% if model.has_thumbnail %}
+          <img class="model-card__thumb"
+               src="{{ url_for('viewer.serve_thumbnail', model_id=model.model_id) }}"
+               alt="{{ model.name }}" loading="lazy" />
+        {% else %}
+          <div class="model-card__thumb model-card__thumb--placeholder">
+            <span class="model-card__thumb-icon">
+              {% if model.format in ('glb','gltf') %}🧊{% elif model.format == 'obj' %}📐{% else %}📦{% endif %}
+            </span>
+          </div>
+        {% endif %}
+        {% if model.has_animation %}
+          <span class="model-card__badge model-card__badge--anim" title="Animated">▶</span>
+        {% endif %}
+        {% if model.format %}
+          <span class="model-card__badge model-card__badge--fmt">{{ model.format | upper }}</span>
+        {% endif %}
+      </a>
+
+      <div class="model-card__body">
+        <!-- Name: read mode -->
+        <div class="model-card__name-wrap">
+          <p class="model-card__name" data-model-id="{{ model.model_id }}">{{ model.name }}</p>
+          <button class="icon-btn model-card__btn-rename"
+                  data-model-id="{{ model.model_id }}"
+                  data-current-name="{{ model.name }}"
+                  title="Rename">✏</button>
+        </div>
+
+        <!-- Name: edit mode (hidden by default) -->
+        <div class="model-card__rename-row" id="rename-row-{{ model.model_id }}" style="display:none">
+          <input type="text"
+                 class="text-input model-card__rename-input"
+                 id="rename-input-{{ model.model_id }}"
+                 maxlength="120"
+                 value="{{ model.name }}" />
+          <button class="icon-btn icon-btn--confirm model-card__btn-rename-save"
+                  data-model-id="{{ model.model_id }}" title="Save">✓</button>
+          <button class="icon-btn model-card__btn-rename-cancel"
+                  data-model-id="{{ model.model_id }}" title="Cancel">✕</button>
+        </div>
+
+        <div class="model-card__actions">
+          <a href="{{ url_for('viewer.view_model', model_id=model.model_id) }}"
+             class="btn btn--primary model-card__btn-view">Open</a>
+          <button class="btn btn--danger model-card__btn-delete"
+                  data-model-id="{{ model.model_id }}"
+                  data-model-name="{{ model.name }}"
+                  title="Delete">🗑</button>
+        </div>
+      </div>
+
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+{% else %}
+<div class="empty-state">
+  <div class="empty-state__icon">🧊</div>
+  <h2>No models yet</h2>
+  <p class="text-muted">Upload a <code>.glb</code> / <code>.gltf</code> / <code>.obj</code>, or a <code>.zip</code> / <code>.rar</code> archive, to get started.</p>
+</div>
+{% endif %}
+
+<!-- ── Delete modal ───────────────────────────────────────────── -->
+<div id="delete-modal" class="modal" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal__backdrop"></div>
+  <div class="modal__box">
+    <h3 class="modal__title">Delete model?</h3>
+    <p class="modal__body">"<span id="delete-modal-name"></span>" and all its files will be permanently removed.</p>
+    <div class="modal__actions">
+      <button id="delete-cancel" class="btn btn--secondary">Cancel</button>
+      <button id="delete-confirm" class="btn btn--danger" data-model-id="">Delete</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── File picker & drag-drop ──────────────────────────────────────
+const input    = document.getElementById('archive-input');
+const uploadBtn= document.getElementById('upload-btn');
+const label    = document.getElementById('drop-label');
+const dropZone = document.getElementById('drop-zone');
+const form     = document.getElementById('upload-form');
+const progress = document.getElementById('upload-progress');
+const bar      = document.getElementById('upload-progress-bar');
+const progText = document.getElementById('upload-progress-text');
+const nameInput= document.getElementById('model-name-input');
+
+const ALLOWED_RE = /\.(glb|gltf|obj|zip|rar)$/i;
+
+function setFile(file) {
+  if (!file) return;
+  if (!ALLOWED_RE.test(file.name)) {
+    alert('Unsupported file. Use .glb, .gltf, .obj, .zip, or .rar.');
+    input.value = '';
+    uploadBtn.disabled = true;
+    return;
+  }
+  uploadBtn.disabled  = false;
+  label.innerHTML     = `<strong>${file.name}</strong> (${(file.size/1024/1024).toFixed(1)} MB)`;
+  // Auto-fill name if blank
+  if (!nameInput.value.trim()) {
+    let stem = file.name.replace(/\.(zip|rar)$/i, '');
+    stem = stem.replace(/\.(glb|gltf|obj|fbx|blend)$/i, '');
+    stem = stem.replace(/[_\-]+/g, ' ').trim();
+    nameInput.value = stem;
+  }
+}
+
+function resetUploadUI() {
+  progress.style.display = 'none';
+  uploadBtn.disabled = false;
+  bar.style.width = '0%';
+  progText.textContent = 'Uploading…';
+}
+
+function showUploadFailure(xhr) {
+  resetUploadUI();
+  // Server returned an HTML error page — show it in place
+  const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
+  if (ct.includes('text/html') && xhr.responseText) {
+    document.open();
+    document.write(xhr.responseText);
+    document.close();
+    return;
+  }
+  // JSON errors (e.g. 413 too large)
+  try {
+    const data = JSON.parse(xhr.responseText || '{}');
+    alert(data.detail || data.error || `Upload failed (${xhr.status})`);
+  } catch (_) {
+    alert(`Upload failed (${xhr.status || 'network error'}). Please try again.`);
+  }
+}
+
+input.addEventListener('change', () => setFile(input.files[0]));
+
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('file-drop--drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('file-drop--drag'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault(); dropZone.classList.remove('file-drop--drag');
+  const file = e.dataTransfer.files[0];
+  if (file) { const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files; setFile(file); }
+});
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!input.files[0]) return;
+  const fd  = new FormData(form);
+  const xhr = new XMLHttpRequest();
+  progress.style.display = 'flex';
+  uploadBtn.disabled = true;
+
+  xhr.upload.addEventListener('progress', (ev) => {
+    if (ev.lengthComputable) {
+      const pct = Math.round(ev.loaded / ev.total * 100);
+      bar.style.width      = pct + '%';
+      progText.textContent = `Uploading… ${pct}%`;
+    }
+  });
+  xhr.addEventListener('load', () => {
+    // Success redirect lands on /view/<id>
+    if (xhr.status >= 200 && xhr.status < 300) {
+      progText.textContent = 'Processing…';
+      const dest = xhr.responseURL || '';
+      if (dest.includes('/view/')) {
+        window.location.href = dest;
+      } else {
+        window.location.href = '/';
+      }
+      return;
+    }
+    showUploadFailure(xhr);
+  });
+  xhr.addEventListener('error', () => {
+    resetUploadUI();
+    alert('Upload failed (network error). Please try again.');
+  });
+  xhr.open('POST', form.action);
+  xhr.send(fd);
+});
+
+// ── Rename flow ──────────────────────────────────────────────────
+document.querySelectorAll('.model-card__btn-rename').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id  = btn.dataset.modelId;
+    const row = document.getElementById(`rename-row-${id}`);
+    const inp = document.getElementById(`rename-input-${id}`);
+    row.style.display = 'flex';
+    btn.style.display = 'none';
+    inp.focus(); inp.select();
+  });
+});
+
+document.querySelectorAll('.model-card__btn-rename-cancel').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id  = btn.dataset.modelId;
+    _cancelRename(id);
+  });
+});
+
+document.querySelectorAll('.model-card__btn-rename-save').forEach(btn => {
+  btn.addEventListener('click', () => _doRename(btn.dataset.modelId));
+});
+
+// Also save on Enter key
+document.querySelectorAll('.model-card__rename-input').forEach(inp => {
+  inp.addEventListener('keydown', (e) => {
+    const id = inp.id.replace('rename-input-', '');
+    if (e.key === 'Enter')  _doRename(id);
+    if (e.key === 'Escape') _cancelRename(id);
+  });
+});
+
+function _cancelRename(id) {
+  const row      = document.getElementById(`rename-row-${id}`);
+  const renameBtn= document.querySelector(`.model-card__btn-rename[data-model-id="${id}"]`);
+  row.style.display      = 'none';
+  renameBtn.style.display = '';
+}
+
+async function _doRename(id) {
+  const inp   = document.getElementById(`rename-input-${id}`);
+  const newName = inp.value.trim();
+  if (!newName) { inp.classList.add('text-input--error'); return; }
+  inp.classList.remove('text-input--error');
+
+  try {
+    const resp = await fetch(`/upload/${id}/name`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name: newName }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      // Update displayed name in DOM
+      const nameEl = document.querySelector(`.model-card__name[data-model-id="${id}"]`);
+      if (nameEl) nameEl.textContent = data.name;
+      // Update delete button's data attribute too
+      const delBtn = document.querySelector(`.model-card__btn-delete[data-model-id="${id}"]`);
+      if (delBtn) delBtn.dataset.modelName = data.name;
+      // Update rename button's data attribute
+      const renBtn = document.querySelector(`.model-card__btn-rename[data-model-id="${id}"]`);
+      if (renBtn) renBtn.dataset.currentName = data.name;
+      _cancelRename(id);
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      alert(`Rename failed: ${err.error || resp.status}`);
+    }
+  } catch (e) {
+    alert(`Rename failed: ${e.message}`);
+  }
+}
+
+// ── Delete flow ──────────────────────────────────────────────────
+const modal      = document.getElementById('delete-modal');
+const modalName  = document.getElementById('delete-modal-name');
+const cancelBtn  = document.getElementById('delete-cancel');
+const confirmBtn = document.getElementById('delete-confirm');
+
+document.querySelectorAll('.model-card__btn-delete').forEach(btn => {
+  btn.addEventListener('click', () => {
+    modalName.textContent = btn.dataset.modelName;
+    confirmBtn.dataset.modelId = btn.dataset.modelId;
+    modal.style.display = 'flex';
+  });
+});
+
+cancelBtn.addEventListener('click', () => modal.style.display = 'none');
+modal.querySelector('.modal__backdrop').addEventListener('click', () => modal.style.display = 'none');
+
+confirmBtn.addEventListener('click', async () => {
+  const id = confirmBtn.dataset.modelId;
+  modal.style.display = 'none';
+  try {
+    const resp = await fetch(`/upload/${id}`, { method: 'DELETE' });
+    if (resp.ok) {
+      const card = document.querySelector(`.model-card[data-model-id="${id}"]`);
+      if (card) {
+        card.style.transition = 'opacity .3s, transform .3s';
+        card.style.opacity    = '0';
+        card.style.transform  = 'scale(0.9)';
+        setTimeout(() => { card.remove(); if (!document.querySelector('.model-card')) location.reload(); }, 320);
+      }
+    } else {
+      const data = await resp.json().catch(() => ({}));
+      alert(`Delete failed: ${data.error || resp.status}`);
+    }
+  } catch (e) { alert(`Delete failed: ${e.message}`); }
+});
+</script>
+{% endblock %}

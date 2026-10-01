@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ display_name }} — 3D Viewer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/viewer.css') }}" />
+</head>
+<body class="viewer-body">
+
+  <script>window.VR_CONFIG = {{ vr_config | tojson }};</script>
+
+  <!-- ── Top bar ─────────────────────────────────────────────── -->
+  <header class="viewer-topbar">
+    <a href="{{ url_for('main.index') }}" class="viewer-topbar__back" title="Back">
+      ← <span>Gallery</span>
+    </a>
+
+    <!-- Editable title -->
+    <div class="viewer-topbar__title-wrap">
+      <span id="viewer-title" class="viewer-topbar__title" title="{{ display_name }}">{{ display_name }}</span>
+      <button id="btn-rename" class="icon-btn-sm" title="Rename model">✏</button>
+      <!-- Inline rename form (hidden by default) -->
+      <div id="rename-wrap" class="topbar-rename-wrap" style="display:none">
+        <input id="rename-input" type="text" class="topbar-rename-input"
+               maxlength="120" value="{{ display_name }}" />
+        <button id="rename-save"   class="icon-btn-sm icon-btn-sm--confirm" title="Save">✓</button>
+        <button id="rename-cancel" class="icon-btn-sm"                      title="Cancel">✕</button>
+      </div>
+    </div>
+
+    <div class="viewer-topbar__actions">
+      <button id="btn-vr"         class="btn-icon btn-icon--vr" title="Enter VR" style="display:none">🥽&nbsp;Enter VR</button>
+      <button id="btn-show-panel" class="btn-icon btn-icon--vr" title="VR Panel" style="display:none">⚙&nbsp;VR Panel</button>
+      <button id="btn-reset"      class="btn-icon" title="Reset camera">⟳</button>
+      <button id="btn-fullscreen" class="btn-icon" title="Fullscreen">⛶</button>
+    </div>
+  </header>
+
+  <!-- ── Canvas ──────────────────────────────────────────────── -->
+  <div id="viewer-wrap">
+    <canvas id="viewer-canvas"></canvas>
+    <div id="loading-overlay" class="loading-overlay">
+      <div class="loading-spinner"></div>
+      <div id="loading-text" class="loading-text">Loading model…</div>
+    </div>
+    <div id="error-overlay" class="error-overlay" style="display:none">
+      <div class="error-overlay__icon">⚠️</div>
+      <div id="error-text" class="error-overlay__text"></div>
+      <a href="{{ url_for('main.index') }}" class="btn btn--primary" style="margin-top:1rem">Back to Gallery</a>
+    </div>
+  </div>
+
+  <!-- ── Side panel ──────────────────────────────────────────── -->
+  <aside id="side-panel" class="side-panel">
+
+    <!-- Exposure -->
+    <section class="panel-section">
+      <label class="panel-label" for="exposure-slider">
+        ☀ Exposure <span id="exposure-value" class="panel-value">1.00</span>
+      </label>
+      <input id="exposure-slider" type="range" min="0" max="4" step="0.05" value="1.0" class="range-slider" />
+    </section>
+
+    <!-- Model scale -->
+    <section class="panel-section">
+      <label class="panel-label" for="scale-slider">
+        ⊞ Scale <span id="scale-value" class="panel-value">1.00×</span>
+      </label>
+      <input id="scale-slider" type="range" min="-2" max="1.699" step="0.001" value="0"
+             class="range-slider" title="Model scale (log)" />
+      <div class="scale-btns">
+        <button class="scale-preset-btn" data-scale="0.1" title="0.1×">0.1×</button>
+        <button class="scale-preset-btn" data-scale="0.5" title="0.5×">½×</button>
+        <button class="scale-preset-btn scale-preset-btn--active" data-scale="1"   title="1×">1×</button>
+        <button class="scale-preset-btn" data-scale="2"   title="2×">2×</button>
+        <button class="scale-preset-btn" data-scale="5"   title="5×">5×</button>
+        <button class="scale-preset-btn" data-scale="10"  title="10×">10×</button>
+      </div>
+    </section>
+
+    <!-- Rotation (persisted) -->
+    <section class="panel-section">
+      <div class="panel-label">
+        ↻ Rotation
+        <span id="rotation-value" class="panel-value">0° / 0° / 0°</span>
+      </div>
+      <div class="axis-sliders">
+        <label class="axis-slider" for="rot-x">
+          <span class="axis-slider__axis">X</span>
+          <input id="rot-x" type="range" min="0" max="360" step="1" value="0" class="range-slider" />
+          <span class="axis-slider__val" id="rot-x-val">0°</span>
+        </label>
+        <label class="axis-slider" for="rot-y">
+          <span class="axis-slider__axis">Y</span>
+          <input id="rot-y" type="range" min="0" max="360" step="1" value="0" class="range-slider" />
+          <span class="axis-slider__val" id="rot-y-val">0°</span>
+        </label>
+        <label class="axis-slider" for="rot-z">
+          <span class="axis-slider__axis">Z</span>
+          <input id="rot-z" type="range" min="0" max="360" step="1" value="0" class="range-slider" />
+          <span class="axis-slider__val" id="rot-z-val">0°</span>
+        </label>
+      </div>
+      <button type="button" id="btn-rotation-reset" class="axis-reset-btn">Reset rotation</button>
+    </section>
+
+    <!-- Position offset (persisted) -->
+    <section class="panel-section">
+      <div class="panel-label">
+        ✥ Position
+        <span id="position-value" class="panel-value">0 / 0 / 0</span>
+      </div>
+      <div class="axis-sliders">
+        <label class="axis-slider" for="pos-x">
+          <span class="axis-slider__axis">X</span>
+          <input id="pos-x" type="range" min="-10" max="10" step="0.01" value="0" class="range-slider" />
+          <span class="axis-slider__val" id="pos-x-val">0.00</span>
+        </label>
+        <label class="axis-slider" for="pos-y">
+          <span class="axis-slider__axis">Y</span>
+          <input id="pos-y" type="range" min="-10" max="10" step="0.01" value="0" class="range-slider" />
+          <span class="axis-slider__val" id="pos-y-val">0.00</span>
+        </label>
+        <label class="axis-slider" for="pos-z">
+          <span class="axis-slider__axis">Z</span>
+          <input id="pos-z" type="range" min="-10" max="10" step="0.01" value="0" class="range-slider" />
+          <span class="axis-slider__val" id="pos-z-val">0.00</span>
+        </label>
+      </div>
+      <button type="button" id="btn-position-reset" class="axis-reset-btn">Reset position</button>
+    </section>
+
+    <!-- Animation -->
+    <section id="anim-section" class="panel-section" style="display:none">
+      <div class="panel-label">▶ Animation</div>
+      <div id="anim-clip-wrap" style="display:none; margin-bottom:.6rem">
+        <select id="anim-clip-select" class="anim-select"></select>
+      </div>
+      <div class="anim-controls">
+        <button id="btn-play"   class="anim-btn anim-btn--play"  title="Play">▶</button>
+        <button id="btn-pause"  class="anim-btn anim-btn--pause" title="Pause" style="display:none">⏸</button>
+        <button id="btn-rewind" class="anim-btn anim-btn--rewind" title="Rewind">⏮</button>
+      </div>
+      <div class="anim-progress-wrap">
+        <input id="anim-scrub" type="range" min="0" max="100" step="0.1" value="0" class="range-slider" />
+        <div class="anim-time-row">
+          <span id="anim-current">0.0s</span>
+          <span id="anim-total">0.0s</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Info -->
+    <section class="panel-section panel-section--info">
+      <div class="panel-label">ℹ Info</div>
+      <dl class="info-list">
+        <dt>Format</dt><dd id="info-format">—</dd>
+        <dt>File</dt>  <dd id="info-file" class="info-mono">—</dd>
+        <dt id="info-anim-dt" style="display:none">Animations</dt>
+        <dd id="info-anim-count" style="display:none">—</dd>
+      </dl>
+    </section>
+
+    <!-- VR info -->
+    <section id="vr-info-section" class="panel-section" style="display:none">
+      <div class="panel-label">🥽 VR — Meta Quest 3</div>
+      <p class="text-muted" style="font-size:.82rem;line-height:1.6">
+        <strong>Trigger</strong> = click buttons<br>
+        <strong>Left stick</strong> = walk (direction you face)<br>
+        <strong>Right stick</strong> = snap turn<br>
+        <strong>X</strong> = menu &nbsp;·&nbsp; <strong>Y</strong> = play/pause<br>
+        <strong>A</strong> = lower &nbsp;·&nbsp; <strong>B</strong> = raise<br>
+        <strong>Scale ⊖/⊕</strong> &amp; <strong>X/Y ±90°</strong> in VR panel
+      </p>
+    </section>
+
+  </aside>
+
+  <button id="panel-toggle" class="panel-toggle" title="Toggle controls">⚙</button>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three":         "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE         from 'three';
+    import { OrbitControls }  from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader }     from 'three/addons/loaders/GLTFLoader.js';
+    import { OBJLoader }      from 'three/addons/loaders/OBJLoader.js';
+    import { MTLLoader }      from 'three/addons/loaders/MTLLoader.js';
+    import { VRButton }       from 'three/addons/webxr/VRButton.js';
+    import { initVR }         from '/static/js/vr-ui.js';
+
+    // ── Flask data ─────────────────────────────────────────────
+    const MODEL_ID      = {{ model_id        | tojson }};
+    const MAIN_FILE     = {{ main_file       | tojson }};
+    const LOADER_KEY    = {{ loader          | tojson }};
+    const FMT           = {{ fmt             | tojson }};
+    const MTL_FILE      = {{ mtl_file        | tojson }};
+    const RESOURCE_BASE = {{ resource_base   | tojson }};
+    const HAS_ANIM      = {{ has_animation   | tojson }};
+    const HAS_THUMBNAIL = {{ has_thumbnail   | tojson }};
+    const SAVED         = {{ viewer_settings | tojson }};
+
+    function assetURL(p) { return `/view/${MODEL_ID}/asset/${p}`; }
+    function assetDir(p) {
+      const parts = p.split('/'); parts.pop();
+      const dir = parts.join('/');
+      return dir ? `/view/${MODEL_ID}/asset/${dir}/` : `/view/${MODEL_ID}/asset/`;
+    }
+
+    // ── DOM ────────────────────────────────────────────────────
+    const canvas          = document.getElementById('viewer-canvas');
+    const loadingOverlay  = document.getElementById('loading-overlay');
+    const loadingText     = document.getElementById('loading-text');
+    const errorOverlay    = document.getElementById('error-overlay');
+    const errorText       = document.getElementById('error-text');
+    const exposureSlider  = document.getElementById('exposure-slider');
+    const exposureValue   = document.getElementById('exposure-value');
+    const scaleSlider     = document.getElementById('scale-slider');
+    const scaleValue      = document.getElementById('scale-value');
+    const rotationValue   = document.getElementById('rotation-value');
+    const positionValue   = document.getElementById('position-value');
+    const btnRotReset     = document.getElementById('btn-rotation-reset');
+    const btnPosReset     = document.getElementById('btn-position-reset');
+    const rotSliders = {
+      x: document.getElementById('rot-x'),
+      y: document.getElementById('rot-y'),
+      z: document.getElementById('rot-z'),
+    };
+    const rotVals = {
+      x: document.getElementById('rot-x-val'),
+      y: document.getElementById('rot-y-val'),
+      z: document.getElementById('rot-z-val'),
+    };
+    const posSliders = {
+      x: document.getElementById('pos-x'),
+      y: document.getElementById('pos-y'),
+      z: document.getElementById('pos-z'),
+    };
+    const posVals = {
+      x: document.getElementById('pos-x-val'),
+      y: document.getElementById('pos-y-val'),
+      z: document.getElementById('pos-z-val'),
+    };
+    const animSection     = document.getElementById('anim-section');
+    const animClipWrap    = document.getElementById('anim-clip-wrap');
+    const animSelect      = document.getElementById('anim-clip-select');
+    const btnPlay         = document.getElementById('btn-play');
+    const btnPause        = document.getElementById('btn-pause');
+    const btnRewind       = document.getElementById('btn-rewind');
+    const animScrub       = document.getElementById('anim-scrub');
+    const animCurrent     = document.getElementById('anim-current');
+    const animTotal       = document.getElementById('anim-total');
+    const infoFormat      = document.getElementById('info-format');
+    const infoFile        = document.getElementById('info-file');
+    const infoAnimDt      = document.getElementById('info-anim-dt');
+    const infoAnimCount   = document.getElementById('info-anim-count');
+    const btnVR           = document.getElementById('btn-vr');
+    const btnShowPanel    = document.getElementById('btn-show-panel');
+    const btnReset        = document.getElementById('btn-reset');
+    const btnFullscreen   = document.getElementById('btn-fullscreen');
+    const panelToggle     = document.getElementById('panel-toggle');
+    const sidePanel       = document.getElementById('side-panel');
+    const vrInfoSection   = document.getElementById('vr-info-section');
+
+    // ── Renderer ───────────────────────────────────────────────
+    // Prefer discrete GPU when available (Quest / multi-GPU PCs).
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: 'high-performance',
+      alpha: false,
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping         = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.outputColorSpace    = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled   = true;
+    renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
+    renderer.xr.enabled          = true;
+
+    // Cap texture size uploaded to GPU (safety net; server also downscales).
+    const MAX_TEX_EDGE = Math.max(
+      256,
+      Number((window.VR_CONFIG && window.VR_CONFIG.maxTextureEdge) || 2048) || 2048
+    );
+    const GPU_TEX_LIMIT = renderer.capabilities.maxTextureSize || 4096;
+    const TEX_EDGE = Math.min(MAX_TEX_EDGE, GPU_TEX_LIMIT);
+
+    function downscaleTexture(tex) {
+      const img = tex && tex.image;
+      if (!img || !img.width || !img.height) return;
+      const longest = Math.max(img.width, img.height);
+      if (longest <= TEX_EDGE) return;
+      const scale = TEX_EDGE / longest;
+      const w = Math.max(1, Math.floor(img.width * scale));
+      const h = Math.max(1, Math.floor(img.height * scale));
+      const canvas2d = document.createElement('canvas');
+      canvas2d.width = w;
+      canvas2d.height = h;
+      const ctx = canvas2d.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, w, h);
+      tex.image = canvas2d;
+      tex.needsUpdate = true;
+    }
+
+    function downscaleMaterialMaps(root) {
+      root.traverse((obj) => {
+        if (!obj.isMesh) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) {
+          if (!mat) continue;
+          for (const key of Object.keys(mat)) {
+            const val = mat[key];
+            if (val && val.isTexture) downscaleTexture(val);
+          }
+        }
+      });
+    }
+
+    // ── Scene ──────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f1117);
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 1000);
+    camera.position.set(0, 1, 3);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(5, 10, 7);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.set(2048, 2048);
+    scene.add(dirLight);
+
+    // Procedural environment
+    (function() {
+      const pm = new THREE.PMREMGenerator(renderer);
+      pm.compileEquirectangularShader();
+      const sz = 512, d = new Uint8Array(sz*sz*4);
+      for (let y=0;y<sz;y++) {
+        const t=y/sz;
+        const r=Math.round(THREE.MathUtils.lerp(30,15,t));
+        const g=Math.round(THREE.MathUtils.lerp(30,18,t));
+        const b=Math.round(THREE.MathUtils.lerp(50,20,t));
+        for (let x=0;x<sz;x++){const i=(y*sz+x)*4;d[i]=r;d[i+1]=g;d[i+2]=b;d[i+3]=255;}
+      }
+      const sky=new THREE.DataTexture(d,sz,sz); sky.needsUpdate=true;
+      scene.environment=pm.fromEquirectangular(sky).texture;
+      pm.dispose(); sky.dispose();
+    })();
+
+    const gridHelper = new THREE.GridHelper(10,20,0x2e3248,0x2e3248);
+    gridHelper.material.opacity=0.4; gridHelper.material.transparent=true;
+    scene.add(gridHelper);
+
+    // ── OrbitControls ──────────────────────────────────────────
+    // Configured for intuitive model inspection:
+    //   Left mouse / touch-drag = orbit (rotate around model)
+    //   Right mouse / two-finger drag = pan
+    //   Scroll / pinch = zoom
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping    = true;
+    controls.dampingFactor    = 0.06;
+    controls.minDistance      = 0.05;
+    controls.maxDistance      = 500;
+    controls.zoomSpeed        = 1.2;
+    controls.rotateSpeed      = 0.8;
+    controls.panSpeed         = 0.8;
+    controls.screenSpacePanning = true;  // pan relative to screen, not world axes
+    controls.update();
+
+    // ── Animation state ────────────────────────────────────────
+    let mixer=null, clips=[], activeAction=null, isPlaying=false, scrubbing=false;
+    const savedCamPos=new THREE.Vector3(), savedCamTarget=new THREE.Vector3();
+
+    // ── Model root + persisted viewer settings ─────────────────
+    let modelRoot = null;
+    let currentScale = 1.0;
+    let currentRotation = {
+      x: Number(SAVED?.rotation?.x) || 0,
+      y: Number(SAVED?.rotation?.y) || 0,
+      z: Number(SAVED?.rotation?.z) || 0,
+    };
+    let currentPosition = {
+      x: Number(SAVED?.position?.x) || 0,
+      y: Number(SAVED?.position?.y) || 0,
+      z: Number(SAVED?.position?.z) || 0,
+    };
+    let saveSettingsTimer = null;
+    let suppressPersist = false;
+    const hasSavedScale = SAVED?.scale != null && Number(SAVED.scale) > 0;
+
+    function normalizeDeg(v) {
+      let d = Number(v) % 360;
+      if (d < 0) d += 360;
+      const r = Math.round(d * 100) / 100;
+      return Math.abs(r - Math.round(r)) < 0.01 ? ((Math.round(r) % 360) + 360) % 360 : r;
+    }
+
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    function updateRotationUI() {
+      for (const axis of ['x', 'y', 'z']) {
+        const v = normalizeDeg(currentRotation[axis]);
+        currentRotation[axis] = v;
+        if (rotSliders[axis]) rotSliders[axis].value = v;
+        if (rotVals[axis]) rotVals[axis].textContent = `${Math.round(v)}°`;
+      }
+      if (rotationValue) {
+        rotationValue.textContent =
+          `${Math.round(currentRotation.x)}° / ${Math.round(currentRotation.y)}° / ${Math.round(currentRotation.z)}°`;
+      }
+    }
+
+    function updatePositionUI() {
+      for (const axis of ['x', 'y', 'z']) {
+        const v = clamp(Number(currentPosition[axis]) || 0, -10, 10);
+        currentPosition[axis] = Math.round(v * 100) / 100;
+        if (posSliders[axis]) posSliders[axis].value = currentPosition[axis];
+        if (posVals[axis]) posVals[axis].textContent = currentPosition[axis].toFixed(2);
+      }
+      if (positionValue) {
+        positionValue.textContent =
+          `${currentPosition.x.toFixed(2)} / ${currentPosition.y.toFixed(2)} / ${currentPosition.z.toFixed(2)}`;
+      }
+    }
+
+    function applyModelRotation() {
+      if (!modelRoot) return;
+      modelRoot.rotation.set(
+        THREE.MathUtils.degToRad(currentRotation.x),
+        THREE.MathUtils.degToRad(currentRotation.y),
+        THREE.MathUtils.degToRad(currentRotation.z),
+      );
+    }
+
+    function recenterAfterTransform() {
+      if (!modelRoot) return;
+      modelRoot.position.set(0, 0, 0);
+      modelRoot.scale.setScalar(currentScale);
+      const box = new THREE.Box3().setFromObject(modelRoot);
+      const ctr = new THREE.Vector3();
+      box.getCenter(ctr);
+      const halfH = (box.max.y - box.min.y) * 0.5;
+      modelRoot.position.sub(ctr);
+      modelRoot.position.y += halfH;
+      modelRoot.position.x += currentPosition.x;
+      modelRoot.position.y += currentPosition.y;
+      modelRoot.position.z += currentPosition.z;
+    }
+
+    function setModelRotation(next, { persist = true } = {}) {
+      currentRotation = {
+        x: normalizeDeg(Number(next.x) || 0),
+        y: normalizeDeg(Number(next.y) || 0),
+        z: normalizeDeg(Number(next.z) || 0),
+      };
+      applyModelRotation();
+      recenterAfterTransform();
+      updateRotationUI();
+      if (persist) scheduleSaveSettings();
+    }
+
+    function setModelPosition(next, { persist = true } = {}) {
+      currentPosition = {
+        x: clamp(Number(next.x) || 0, -10, 10),
+        y: clamp(Number(next.y) || 0, -10, 10),
+        z: clamp(Number(next.z) || 0, -10, 10),
+      };
+      recenterAfterTransform();
+      updatePositionUI();
+      if (persist) scheduleSaveSettings();
+    }
+
+    function nudgeRotation(axis, deltaDeg) {
+      const next = { ...currentRotation };
+      next[axis] = (next[axis] || 0) + deltaDeg;
+      setModelRotation(next);
+    }
+
+    function scheduleSaveSettings() {
+      if (suppressPersist) return;
+      clearTimeout(saveSettingsTimer);
+      saveSettingsTimer = setTimeout(persistSettings, 300);
+    }
+
+    async function persistSettings() {
+      try {
+        await fetch(`/upload/${MODEL_ID}/viewer-settings`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rotation: currentRotation,
+            position: currentPosition,
+            scale: currentScale,
+            exposure: renderer.toneMappingExposure,
+          }),
+        });
+      } catch (_) { /* non-fatal */ }
+    }
+
+    // ── Resize ─────────────────────────────────────────────────
+    function onResize() {
+      const w=canvas.parentElement.clientWidth, h=canvas.parentElement.clientHeight;
+      renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize',onResize); onResize();
+
+    // ── Viewer state (shared with VR) ──────────────────────────
+    function getViewerState() {
+      return {
+        isPlaying,
+        exposure:    renderer.toneMappingExposure,
+        hasAnimation: clips.length > 0,
+        modelScale:  currentScale,
+        rotation:    { ...currentRotation },
+        position:    { ...currentPosition },
+      };
+    }
+
+    function setExposure(v, { persist = true } = {}) {
+      const val = clamp(Number(v) || 0, 0, 4);
+      renderer.toneMappingExposure = val;
+      exposureSlider.value = val;
+      exposureValue.textContent = val.toFixed(2);
+      if (persist) scheduleSaveSettings();
+    }
+
+    // Scale is applied to modelRoot only (not scene), log slider for usable range
+    // slider range is log10: -2 → 0.01×, 0 → 1×, 1.699 → ~50×
+    function setModelScale(v, { persist = true } = {}) {
+      currentScale = clamp(Number(v) || 1, 0.01, 50);
+      if (modelRoot) {
+        modelRoot.scale.setScalar(currentScale);
+        recenterAfterTransform();
+      }
+      const logVal = Math.log10(currentScale);
+      scaleSlider.value = logVal;
+      scaleValue.textContent = currentScale >= 10
+        ? currentScale.toFixed(1) + '×'
+        : currentScale.toFixed(currentScale < 0.1 ? 3 : 2) + '×';
+      document.querySelectorAll('.scale-preset-btn').forEach(b => {
+        b.classList.toggle('scale-preset-btn--active', parseFloat(b.dataset.scale) === currentScale);
+      });
+      if (persist) scheduleSaveSettings();
+    }
+
+    function scaleUp()   { setModelScale(currentScale * 2); }
+    function scaleDown() { setModelScale(currentScale / 2); }
+
+    function playAnim()  { if(!activeAction)return; activeAction.paused=false; isPlaying=true;  updatePPUI(); }
+    function pauseAnim() { if(!activeAction)return; activeAction.paused=true;  isPlaying=false; updatePPUI(); }
+    function toggleAnim() { isPlaying ? pauseAnim() : playAnim(); }
+    function rewindAnim() {
+      if(!activeAction||!mixer)return;
+      activeAction.reset().play(); activeAction.paused=!isPlaying;
+      mixer.setTime(0); animScrub.value=0; animCurrent.textContent='0.0s';
+    }
+    function updatePPUI() {
+      btnPlay.style.display  = isPlaying ? 'none' : 'flex';
+      btnPause.style.display = isPlaying ? 'flex' : 'none';
+    }
+
+    // ── VR module ──────────────────────────────────────────────
+    const vrAPI = initVR({
+      renderer, scene, camera, controls,
+      getViewerState, setExposure, playAnim, pauseAnim, rewindAnim, toggleAnim,
+      scaleUp, scaleDown, setModelScale,
+      nudgeRotation,
+    });
+
+    // ── Render loop ────────────────────────────────────────────
+    const clock = new THREE.Clock();
+    renderer.setAnimationLoop(() => {
+      const dt = clock.getDelta();
+      if (mixer && isPlaying && !scrubbing) { mixer.update(dt); _updateScrubUI(); }
+
+      // CRITICAL: Only run OrbitControls when NOT in VR.
+      // In VR mode, controls.update() overwrites camera.matrixWorld to look at
+      // controls.target (the model center), which causes locomotion to always
+      // move toward center. Guard it here.
+      if (!renderer.xr.isPresenting) controls.update();
+
+      vrAPI.update(dt);  // pass delta for smooth turn timing
+      renderer.render(scene, camera);
+    });
+
+    // ── Loading helpers ────────────────────────────────────────
+    function showError(msg) {
+      loadingOverlay.style.display = 'none';
+      errorOverlay.style.display = 'flex';
+      errorText.textContent = msg;
+    }
+    function hideLoading() {
+      loadingOverlay.style.opacity = '0';
+      setTimeout(()=>{ loadingOverlay.style.display='none'; }, 400);
+    }
+
+    function fitModel(obj) {
+      suppressPersist = true;
+      applyModelRotation();
+      const box=new THREE.Box3().setFromObject(obj);
+      const sz=new THREE.Vector3(), ctr=new THREE.Vector3();
+      box.getSize(sz); box.getCenter(ctr);
+      const mx=Math.max(sz.x,sz.y,sz.z); if(mx===0){ suppressPersist=false; return; }
+      let sc=2/mx;
+      if (hasSavedScale) sc = Number(SAVED.scale);
+      obj.scale.setScalar(sc);
+      currentScale = sc;
+
+      box.setFromObject(obj); box.getCenter(ctr);
+      obj.position.sub(ctr);
+      obj.position.y += (box.max.y - box.min.y) * 0.5;
+      obj.position.x += currentPosition.x;
+      obj.position.y += currentPosition.y;
+      obj.position.z += currentPosition.z;
+
+      const dist=2*2.2;
+      camera.position.set(dist*.6, dist*.5, dist);
+      camera.near=mx*sc*0.001; camera.far=mx*sc*100; camera.updateProjectionMatrix();
+      controls.target.set(0, (box.max.y-box.min.y)*0.5, 0); controls.update();
+      savedCamPos.copy(camera.position); savedCamTarget.copy(controls.target);
+      const fp=Math.max(sz.x,sz.z)*sc*4; gridHelper.scale.set(fp/10,1,fp/10);
+
+      const logVal = Math.log10(currentScale);
+      scaleSlider.value = logVal;
+      scaleValue.textContent = currentScale.toFixed(3) + '×';
+      updateRotationUI();
+      updatePositionUI();
+      if (SAVED?.exposure != null) setExposure(SAVED.exposure, { persist: false });
+      suppressPersist = false;
+    }
+
+    function setupAnimations(obj, loadedClips) {
+      if(!loadedClips?.length) return;
+      clips=loadedClips; mixer=new THREE.AnimationMixer(obj);
+      if(clips.length>1){
+        animClipWrap.style.display='block';
+        clips.forEach((c,i)=>{
+          const o=document.createElement('option');
+          o.value=i; o.textContent=c.name||`Clip ${i+1}`;
+          animSelect.appendChild(o);
+        });
+      }
+      animSection.style.display='block';
+      infoAnimDt.style.display=infoAnimCount.style.display='';
+      infoAnimCount.textContent=clips.length;
+      activateClip(0, false);
+    }
+
+    function activateClip(idx, play) {
+      if(activeAction) activeAction.fadeOut(0.2);
+      const clip=clips[idx];
+      activeAction=mixer.clipAction(clip);
+      activeAction.reset().fadeIn(0.2).play();
+      activeAction.paused=!play; isPlaying=play;
+      animScrub.max=clip.duration; animScrub.step=clip.duration/1000;
+      animTotal.textContent=clip.duration.toFixed(1)+'s';
+      animScrub.value=0; animCurrent.textContent='0.0s';
+      updatePPUI();
+    }
+
+    function _updateScrubUI() {
+      if(!activeAction) return;
+      animScrub.value=activeAction.time;
+      animCurrent.textContent=activeAction.time.toFixed(1)+'s';
+    }
+
+    // ── Thumbnail capture ──────────────────────────────────────
+    function captureThumbnail() {
+      if (HAS_THUMBNAIL) return;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        try {
+          renderer.render(scene, camera);
+          const dataURL = renderer.domElement.toDataURL('image/jpeg', 0.85);
+          fetch(`/upload/${MODEL_ID}/thumbnail`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({data: dataURL}),
+          }).catch(()=>{});
+        } catch(_) {}
+      }));
+    }
+
+    function onModelLoaded() {
+      infoFormat.textContent = FMT?.toUpperCase() ?? '—';
+      infoFile.textContent   = MAIN_FILE?.split('/').pop() ?? '—';
+      _setupVRButton();
+      hideLoading();
+      captureThumbnail();
+    }
+
+    // ── Loaders ────────────────────────────────────────────────
+    function loadGLTF(url) {
+      new GLTFLoader().load(
+        url,
+        (gltf) => {
+          modelRoot = gltf.scene;
+          downscaleMaterialMaps(modelRoot);
+          scene.add(modelRoot);
+          fitModel(modelRoot);
+          if (gltf.animations?.length) setupAnimations(modelRoot, gltf.animations);
+          onModelLoaded();
+        },
+        (p) => { if(p.total>0) loadingText.textContent=`Loading… ${Math.round(p.loaded/p.total*100)}%`; },
+        (e) => showError(`GLTF load failed: ${e.message||e}`)
+      );
+    }
+
+    function loadOBJ(objURL, mtlURL) {
+      function doOBJ(mats) {
+        const loader = new OBJLoader();
+        if (mats) loader.setMaterials(mats);
+        loadingText.textContent = 'Parsing OBJ (large files can take a while)…';
+        loader.load(
+          objURL,
+          (obj) => {
+            if (!mats) {
+              obj.traverse(c=>{
+                if(c.isMesh) c.material=new THREE.MeshStandardMaterial({color:0xaaaaaa,roughness:.6,metalness:.1});
+              });
+            }
+            modelRoot = obj;
+            downscaleMaterialMaps(modelRoot);
+            scene.add(modelRoot);
+            fitModel(modelRoot);
+            onModelLoaded();
+          },
+          (p) => {
+            if (p.total > 0) {
+              loadingText.textContent = `Loading OBJ… ${Math.round(p.loaded / p.total * 100)}%`;
+            }
+          },
+          (e) => showError(`OBJ load failed: ${e.message||e}`)
+        );
+      }
+
+      if (mtlURL) {
+        loadingText.textContent = 'Loading materials & textures…';
+        const ml = new MTLLoader();
+        const resourcePath = RESOURCE_BASE
+          ? `/view/${MODEL_ID}/asset/${RESOURCE_BASE}/`
+          : assetDir(MTL_FILE);
+        ml.setResourcePath(resourcePath);
+        ml.load(
+          mtlURL,
+          (mats) => {
+            // Hook texture loads so we clamp size before GPU upload.
+            const creator = mats;
+            const origLoadTexture = creator.loadTexture.bind(creator);
+            creator.loadTexture = function (url, mapping, onLoad, onProgress, onError) {
+              return origLoadTexture(
+                url,
+                mapping,
+                (tex) => {
+                  downscaleTexture(tex);
+                  if (onLoad) onLoad(tex);
+                },
+                onProgress,
+                onError,
+              );
+            };
+            mats.preload();
+            doOBJ(mats);
+          },
+          undefined,
+          () => doOBJ(null),
+        );
+      } else {
+        doOBJ(null);
+      }
+    }
+
+    function startLoading() {
+      if (!MAIN_FILE) { showError('No model file detected.'); return; }
+      if (LOADER_KEY==='GLTFLoader')     loadGLTF(assetURL(MAIN_FILE));
+      else if (LOADER_KEY==='OBJLoader') loadOBJ(assetURL(MAIN_FILE), MTL_FILE ? assetURL(MTL_FILE) : null);
+      else showError(`Format "${FMT}" cannot be rendered in the browser.\nPlease export as GLB and re-upload.`);
+    }
+
+    // ── VR button ──────────────────────────────────────────────
+    function _setupVRButton() {
+      if (!navigator.xr) return;
+      navigator.xr.isSessionSupported('immersive-vr').then(ok => {
+        if (!ok) return;
+        vrInfoSection.style.display = 'block';
+        const vrBtn = VRButton.createButton(renderer);
+        vrBtn.style.display = 'none';
+        document.body.appendChild(vrBtn);
+        btnVR.style.display = 'flex';
+        btnVR.addEventListener('click', () => vrBtn.click());
+        renderer.xr.addEventListener('sessionstart', ()=>{ btnShowPanel.style.display='flex'; });
+        renderer.xr.addEventListener('sessionend',   ()=>{ btnShowPanel.style.display='none'; });
+        btnShowPanel.addEventListener('click', ()=>vrAPI.showPanel(true));
+      });
+    }
+
+    // ── Desktop UI events ──────────────────────────────────────
+    exposureSlider.addEventListener('input', ()=>setExposure(parseFloat(exposureSlider.value)));
+
+    // Scale slider uses log10 mapping for comfortable range
+    scaleSlider.addEventListener('input', ()=>{
+      const linearScale = Math.pow(10, parseFloat(scaleSlider.value));
+      setModelScale(linearScale);
+    });
+
+    document.querySelectorAll('.scale-preset-btn').forEach(btn => {
+      btn.addEventListener('click', ()=>setModelScale(parseFloat(btn.dataset.scale)));
+    });
+
+    for (const axis of ['x', 'y', 'z']) {
+      rotSliders[axis]?.addEventListener('input', () => {
+        const next = { ...currentRotation, [axis]: parseFloat(rotSliders[axis].value) };
+        setModelRotation(next);
+      });
+      posSliders[axis]?.addEventListener('input', () => {
+        const next = { ...currentPosition, [axis]: parseFloat(posSliders[axis].value) };
+        setModelPosition(next);
+      });
+    }
+    btnRotReset?.addEventListener('click', () => setModelRotation({ x: 0, y: 0, z: 0 }));
+    btnPosReset?.addEventListener('click', () => setModelPosition({ x: 0, y: 0, z: 0 }));
+
+    btnPlay.addEventListener('click',   playAnim);
+    btnPause.addEventListener('click',  pauseAnim);
+    btnRewind.addEventListener('click', rewindAnim);
+    animSelect.addEventListener('change', ()=>activateClip(parseInt(animSelect.value), isPlaying));
+
+    animScrub.addEventListener('mousedown',  ()=>{scrubbing=true;});
+    animScrub.addEventListener('touchstart', ()=>{scrubbing=true;},{passive:true});
+    animScrub.addEventListener('input', ()=>{
+      if(!activeAction||!mixer)return;
+      const t=parseFloat(animScrub.value);
+      mixer.setTime(t); activeAction.paused=true; animCurrent.textContent=t.toFixed(1)+'s';
+    });
+    animScrub.addEventListener('mouseup',  ()=>{scrubbing=false; if(isPlaying&&activeAction)activeAction.paused=false;});
+    animScrub.addEventListener('touchend', ()=>{scrubbing=false; if(isPlaying&&activeAction)activeAction.paused=false;});
+
+    btnReset.addEventListener('click', ()=>{
+      camera.position.copy(savedCamPos); controls.target.copy(savedCamTarget); controls.update();
+      setModelScale(1);
+    });
+    btnFullscreen.addEventListener('click', ()=>{
+      const w=document.getElementById('viewer-wrap');
+      if(!document.fullscreenElement) w.requestFullscreen?.(); else document.exitFullscreen?.();
+    });
+    panelToggle.addEventListener('click', ()=>sidePanel.classList.toggle('side-panel--open'));
+
+    // ── Rename (topbar) ────────────────────────────────────────
+    const btnRenameEl   = document.getElementById('btn-rename');
+    const renameWrap    = document.getElementById('rename-wrap');
+    const renameInput   = document.getElementById('rename-input');
+    const renameSave    = document.getElementById('rename-save');
+    const renameCancel  = document.getElementById('rename-cancel');
+    const viewerTitle   = document.getElementById('viewer-title');
+
+    btnRenameEl.addEventListener('click', ()=>{
+      renameWrap.style.display = 'flex';
+      btnRenameEl.style.display = 'none';
+      viewerTitle.style.display = 'none';
+      renameInput.focus(); renameInput.select();
+    });
+
+    renameCancel.addEventListener('click', ()=>{
+      renameWrap.style.display  = 'none';
+      btnRenameEl.style.display = '';
+      viewerTitle.style.display = '';
+    });
+
+    async function doRename() {
+      const newName = renameInput.value.trim();
+      if (!newName) { renameInput.style.borderColor='var(--color-danger)'; return; }
+      renameInput.style.borderColor = '';
+      try {
+        const resp = await fetch(`/upload/${MODEL_ID}/name`, {
+          method: 'PATCH',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({name: newName}),
+        });
+        if (resp.ok) {
+          const d = await resp.json();
+          viewerTitle.textContent = d.name;
+          document.title = d.name + ' — 3D Viewer';
+          renameWrap.style.display  = 'none';
+          btnRenameEl.style.display = '';
+          viewerTitle.style.display = '';
+        } else {
+          const err = await resp.json().catch(()=>({}));
+          alert(`Rename failed: ${err.error||resp.status}`);
+        }
+      } catch(e) { alert(`Rename failed: ${e.message}`); }
+    }
+
+    renameSave.addEventListener('click', doRename);
+    renameInput.addEventListener('keydown', (e)=>{
+      if (e.key==='Enter')  doRename();
+      if (e.key==='Escape') renameCancel.click();
+    });
+
+    // ── Boot ───────────────────────────────────────────────────
+    startLoading();
+  </script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}3D Viewer — Upload a Model{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>3D Model Viewer</h1>
+  <p class="hero__sub">
+    Upload a <strong>.zip</strong> or <strong>.rar</strong> archive containing
+    your 3D model. Supports GLB, GLTF, OBJ and more.
+  </p>
+
+  {# Upload form will be wired up in Chunk 2 #}
+  <div class="upload-card">
+    <form id="upload-form"
+          action="{{ url_for('upload.upload_index') }}"
+          method="POST"
+          enctype="multipart/form-data">
+      <label class="file-drop" for="archive-input">
+        <span class="file-drop__icon">📦</span>
+        <span class="file-drop__text">Drop your archive here or <u>browse</u></span>
+        <input id="archive-input" type="file" name="archive"
+               accept=".zip,.rar" hidden />
+      </label>
+      <button type="submit" class="btn btn--primary" disabled id="upload-btn">
+        Upload &amp; Process
+      </button>
+    </form>
+    <p class="upload-card__hint">Max file size: {{ max_upload_mb | default(200) }} MB</p>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Enable button when a file is chosen
+  const input = document.getElementById('archive-input');
+  const btn   = document.getElementById('upload-btn');
+  const label = document.querySelector('.file-drop__text');
+
+  input.addEventListener('change', () => {
+    if (input.files.length > 0) {
+      btn.disabled = false;
+      label.textContent = input.files[0].name;
+    }
+  });
+</script>
+{% endblock %}

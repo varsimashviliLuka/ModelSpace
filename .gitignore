@@ -1,0 +1,38 @@
+# Bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local secrets & runtime data (never commit)
+.env
+uploads/
+certs/
+*.pem
+*.key
+
+# Test temp
+tests/tmp_uploads/
+
+# Build / dist
+dist/
+build/
+*.egg
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

@@ -1,0 +1,295 @@
+/* ================================================================
+   3D Viewer — Main Stylesheet
+   Design system: CSS custom properties + utility classes
+   ================================================================ */
+
+/* ----------------------------------------------------------------
+   Custom properties (design tokens)
+   ---------------------------------------------------------------- */
+:root {
+  --color-bg:          #0f1117;
+  --color-surface:     #1a1d27;
+  --color-surface-2:   #242736;
+  --color-border:      #2e3248;
+  --color-text:        #e8eaf0;
+  --color-text-muted:  #7c82a0;
+  --color-primary:     #6c63ff;
+  --color-primary-h:   #8880ff;
+  --color-danger:      #e05c5c;
+  --color-success:     #4caf81;
+  --color-warning:     #e0a84e;
+
+  --radius-sm:  6px;
+  --radius-md:  12px;
+  --radius-lg:  20px;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+/* ----------------------------------------------------------------
+   Reset
+   ---------------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a { color: var(--color-primary); text-decoration: none; }
+a:hover { color: var(--color-primary-h); text-decoration: underline; }
+
+/* ----------------------------------------------------------------
+   Layout
+   ---------------------------------------------------------------- */
+.site-header {
+  display: flex;
+  align-items: center;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.site-logo {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.site-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3rem 1.5rem;
+}
+
+/* ----------------------------------------------------------------
+   Flash messages
+   ---------------------------------------------------------------- */
+.flash-messages {
+  width: 100%;
+  max-width: 640px;
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+.flash {
+  padding: .75rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: .9rem;
+}
+
+.flash--error   { background: rgba(224,92,92,.15); border: 1px solid var(--color-danger);  color: var(--color-danger); }
+.flash--success { background: rgba(76,175,129,.15); border: 1px solid var(--color-success); color: var(--color-success); }
+.flash--warning { background: rgba(224,168,78,.15); border: 1px solid var(--color-warning); color: var(--color-warning); }
+.flash--info    { background: rgba(108,99,255,.15); border: 1px solid var(--color-primary); color: var(--color-primary); }
+
+/* ----------------------------------------------------------------
+   Hero
+   ---------------------------------------------------------------- */
+.hero {
+  text-align: center;
+  max-width: 640px;
+  width: 100%;
+}
+
+.hero h1 {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  margin-bottom: .5rem;
+}
+
+.hero__sub {
+  color: var(--color-text-muted);
+  margin-bottom: 2rem;
+  font-size: 1.05rem;
+}
+
+/* ----------------------------------------------------------------
+   Upload card
+   ---------------------------------------------------------------- */
+.upload-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 2rem;
+  width: 100%;
+  box-shadow: var(--shadow-card);
+}
+
+.file-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2.5rem 1rem;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  margin-bottom: 1.25rem;
+}
+
+.file-drop:hover {
+  border-color: var(--color-primary);
+  background: rgba(108,99,255,.05);
+}
+
+.file-drop__icon { font-size: 2.5rem; }
+.file-drop__text { color: var(--color-text-muted); font-size: .95rem; }
+
+.upload-card__hint {
+  margin-top: .75rem;
+  font-size: .8rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* ----------------------------------------------------------------
+   Buttons
+   ---------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: .65rem 1.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background .2s, opacity .2s, transform .1s;
+  width: 100%;
+}
+
+.btn:active { transform: scale(.98); }
+
+.btn--primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+.btn--primary:hover { background: var(--color-primary-h); }
+.btn--primary:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.btn--secondary {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+.btn--secondary:hover { background: var(--color-border); }
+
+/* ----------------------------------------------------------------
+   Error page
+   ---------------------------------------------------------------- */
+.error-page {
+  text-align: center;
+  padding: 4rem 1rem;
+}
+
+.error-page h1 {
+  font-size: 6rem;
+  font-weight: 900;
+  color: var(--color-primary);
+  line-height: 1;
+  margin-bottom: 1rem;
+}
+
+.error-page p {
+  color: var(--color-text-muted);
+  margin-bottom: 2rem;
+}
+
+/* ----------------------------------------------------------------
+   Upload error card
+   ---------------------------------------------------------------- */
+.error-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  padding: 2.5rem 2rem;
+  max-width: 600px;
+  width: 100%;
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+
+.error-card__icon { font-size: 3rem; margin-bottom: .75rem; }
+
+.error-card__title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--color-danger);
+  margin-bottom: 1rem;
+}
+
+.error-card__message {
+  background: rgba(224,92,92,.08);
+  border: 1px solid rgba(224,92,92,.3);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  font-family: var(--font-mono);
+  font-size: .88rem;
+  color: var(--color-text);
+  margin-bottom: 1rem;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-card__hint {
+  background: rgba(108,99,255,.08);
+  border: 1px solid rgba(108,99,255,.3);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  font-size: .9rem;
+  color: var(--color-text);
+  text-align: left;
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+
+.error-card__warnings {
+  text-align: left;
+  font-size: .82rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1rem;
+  padding: .75rem 1rem;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.error-card__warnings ul {
+  margin-top: .5rem;
+  padding-left: 1.2rem;
+}
+
+.error-card__warnings li { margin-bottom: .2rem; }
+
+/* ----------------------------------------------------------------
+   Utilities
+   ---------------------------------------------------------------- */
+.text-muted  { color: var(--color-text-muted); }
+.text-center { text-align: center; }
+.mt-1 { margin-top: .5rem; }
+.mt-2 { margin-top: 1rem; }
+.mt-3 { margin-top: 1.5rem; }
