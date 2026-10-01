@@ -176,15 +176,21 @@ def _extract_zip(archive_path: Path, extract_dir: Path) -> ExtractionResult:
 # RAR extraction
 # ------------------------------------------------------------------ #
 
+_RAR_ZIP_HINT = (
+    "Easiest fix: re-archive the same files as a .zip and upload that instead "
+    "(ZIP works without extra tools)."
+)
+
+
 def _extract_rar(archive_path: Path, extract_dir: Path) -> ExtractionResult:
     if not _RARFILE_AVAILABLE:
         return ExtractionResult(
             success=False,
             extracted_dir=extract_dir,
             error=(
-                "RAR support is not available. "
-                "Install the 'rarfile' Python package and the system 'unrar' binary: "
-                "  pip install rarfile  &&  apt install unrar  (or brew install rar)"
+                "RAR support is not available on this server "
+                "(missing Python 'rarfile' package). "
+                + _RAR_ZIP_HINT
             ),
         )
 
@@ -192,6 +198,19 @@ def _extract_rar(archive_path: Path, extract_dir: Path) -> ExtractionResult:
     extracted_files: list[Path] = []
 
     try:
+        # Fail fast with a clear message if UnRAR/bsdtar is missing.
+        try:
+            rarfile.tool_setup()
+        except Exception as setup_exc:
+            return ExtractionResult(
+                success=False,
+                extracted_dir=extract_dir,
+                error=(
+                    f"Cannot extract RAR: system UnRAR tool not found ({setup_exc}). "
+                    + _RAR_ZIP_HINT
+                ),
+            )
+
         with rarfile.RarFile(str(archive_path)) as rf:
             members = rf.infolist()
 
@@ -235,10 +254,24 @@ def _extract_rar(archive_path: Path, extract_dir: Path) -> ExtractionResult:
                 extracted_files.append(resolved)
 
     except Exception as exc:
+        msg = str(exc)
+        lower = msg.lower()
+        if (
+            "cannot find working tool" in lower
+            or "cannotexec" in lower
+            or "unrar" in lower
+            or "tool" in lower and "not" in lower
+        ):
+            error = (
+                f"Cannot extract RAR: UnRAR tool not found ({exc}). "
+                + _RAR_ZIP_HINT
+            )
+        else:
+            error = f"RAR extraction failed: {exc}. {_RAR_ZIP_HINT}"
         return ExtractionResult(
             success=False,
             extracted_dir=extract_dir,
-            error=f"RAR extraction failed: {exc}",
+            error=error,
         )
 
     return ExtractionResult(

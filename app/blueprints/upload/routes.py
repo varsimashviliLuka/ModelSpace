@@ -98,6 +98,30 @@ def _upload_error(model_id: str | None, error: str, *, warnings=None, hint=None,
     ), status
 
 
+def _fail_and_cleanup(
+    model_id: str | None,
+    error: str,
+    *,
+    warnings=None,
+    hint=None,
+    status=422,
+):
+    """
+    Remove any partial upload directory, then show the error page.
+    Prevents orphaned folders under uploads/ for failed RAR/zip/detect paths.
+    """
+    if model_id:
+        try:
+            storage_service.delete_model(model_id)
+        except Exception:
+            current_app.logger.exception(
+                "Failed to clean up upload folder for model_id=%s", model_id
+            )
+    return _upload_error(
+        None, error, warnings=warnings, hint=hint, status=status
+    )
+
+
 # ------------------------------------------------------------------ #
 # Routes
 # ------------------------------------------------------------------ #
@@ -137,7 +161,9 @@ def upload_file():
         raw_path = storage_service.save_raw_archive(model_id, file, file.filename)
     except Exception as exc:
         current_app.logger.exception("Failed to save uploaded file")
-        return _upload_error(model_id, f"Could not save uploaded file: {exc}", status=500)
+        return _fail_and_cleanup(
+            model_id, f"Could not save uploaded file: {exc}", status=500
+        )
 
     initial_meta: dict = {
         "model_id":          model_id,
@@ -154,57 +180,76 @@ def upload_file():
 
     warnings: list[str] = []
 
-    if is_archive:
-        extract_dir = storage_service.extracted_dir(model_id)
-        result = archive_service.extract(raw_path, extract_dir)
+    try:
+        if is_archive:
+            extract_dir = storage_service.extracted_dir(model_id)
+            result = archive_service.extract(raw_path, extract_dir)
 
-        if not result.success:
-            storage_service.write_meta(model_id, {"status": "error", "error": result.error})
-            return _upload_error(model_id, result.error or "Extraction failed.", warnings=result.warnings)
+            if not result.success:
+                hint = None
+                if _ext(file.filename) == "rar":
+                    hint = (
+                        "Re-compress the folder as a .zip (Windows: right-click → "
+                        "Compress to ZIP / Send to Compressed folder) and upload that instead."
+                    )
+                return _fail_and_cleanup(
+                    model_id,
+                    result.error or "Extraction failed.",
+                    warnings=result.warnings,
+                    hint=hint,
+                )
 
-        file_entries = _file_list_for_meta(result.files, extract_dir)
-        warnings = result.warnings
+            file_entries = _file_list_for_meta(result.files, extract_dir)
+            warnings = result.warnings
+            storage_service.write_meta(model_id, {
+                "status":              "inspecting",
+                "file_count":          len(result.files),
+                "files":               file_entries,
+                "extraction_warnings": warnings,
+                "extracted_at":        time.time(),
+            })
+        else:
+            # Single model file → copy into extracted/ (same layout the viewer expects)
+            extract_dir, file_entries = storage_service.place_direct_model(model_id, raw_path)
+            storage_service.write_meta(model_id, {
+                "status":       "inspecting",
+                "file_count":   len(file_entries),
+                "files":        file_entries,
+                "extracted_at": time.time(),
+            })
+
+        from app.services import model_service, optimize_service
+
+        max_edge = int(current_app.config.get("MAX_TEXTURE_EDGE", 2048) or 0)
+        if max_edge > 0:
+            storage_service.write_meta(model_id, {"status": "optimizing"})
+            opt = optimize_service.downscale_textures(extract_dir, max_edge)
+            storage_service.write_meta(model_id, {"texture_optimize": opt})
+
+        detection = model_service.detect(extract_dir, file_entries)
         storage_service.write_meta(model_id, {
-            "status":              "inspecting",
-            "file_count":          len(result.files),
-            "files":               file_entries,
-            "extraction_warnings": warnings,
-            "extracted_at":        time.time(),
-        })
-    else:
-        # Single model file → copy into extracted/ (same layout the viewer expects)
-        extract_dir, file_entries = storage_service.place_direct_model(model_id, raw_path)
-        storage_service.write_meta(model_id, {
-            "status":       "inspecting",
-            "file_count":   len(file_entries),
-            "files":        file_entries,
-            "extracted_at": time.time(),
+            "status":       "ready" if detection["main_file"] else "unsupported",
+            "detection":    detection,
+            "processed_at": time.time(),
         })
 
-    from app.services import model_service, optimize_service
+        if not detection["main_file"]:
+            return _fail_and_cleanup(
+                model_id,
+                detection.get("error", "No supported 3D model file found."),
+                warnings=warnings,
+                hint=detection.get("hint"),
+            )
 
-    max_edge = int(current_app.config.get("MAX_TEXTURE_EDGE", 2048) or 0)
-    if max_edge > 0:
-        storage_service.write_meta(model_id, {"status": "optimizing"})
-        opt = optimize_service.downscale_textures(extract_dir, max_edge)
-        storage_service.write_meta(model_id, {"texture_optimize": opt})
+        return redirect(url_for("viewer.view_model", model_id=model_id))
 
-    detection = model_service.detect(extract_dir, file_entries)
-    storage_service.write_meta(model_id, {
-        "status":       "ready" if detection["main_file"] else "unsupported",
-        "detection":    detection,
-        "processed_at": time.time(),
-    })
-
-    if not detection["main_file"]:
-        return _upload_error(
+    except Exception as exc:
+        current_app.logger.exception("Upload processing failed for %s", model_id)
+        return _fail_and_cleanup(
             model_id,
-            detection.get("error", "No supported 3D model file found."),
-            warnings=warnings,
-            hint=detection.get("hint"),
+            f"Processing failed: {exc}",
+            status=500,
         )
-
-    return redirect(url_for("viewer.view_model", model_id=model_id))
 
 
 @bp.route("/status/<model_id>", methods=["GET"])

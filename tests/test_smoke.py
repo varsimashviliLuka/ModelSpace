@@ -95,6 +95,19 @@ def test_upload_rejects_unsupported(client):
     assert b"Unsupported file type" in response.data
 
 
+def test_failed_rar_cleans_upload_folder(client, app):
+    """Failed RAR extraction must not leave orphan folders under uploads/."""
+    data = {
+        "archive": (io.BytesIO(b"this is not a real rar"), "broken.rar"),
+        "model_name": "BrokenRar",
+    }
+    response = client.post("/upload/", data=data, content_type="multipart/form-data")
+    assert response.status_code == 422
+    upload_folder: Path = app.config["UPLOAD_FOLDER"]
+    leftovers = [p for p in upload_folder.iterdir() if p.is_dir()] if upload_folder.is_dir() else []
+    assert leftovers == [], f"Expected no leftover upload dirs, found {[p.name for p in leftovers]}"
+
+
 def test_upload_direct_glb(client, app):
     """A lone .glb should be accepted and land on the viewer."""
     glb_bytes = b"glTF" + b"\x00" * 20  # enough for probe to fail soft
