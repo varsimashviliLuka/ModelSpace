@@ -23,4 +23,4 @@ def index():
 
 @bp.route("/health")
 def health():
-    return jsonify(status="ok", service="3d-viewer")
+    return jsonify(status="ok", service="modelspace")

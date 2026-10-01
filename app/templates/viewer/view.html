@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{{ display_name }} — 3D Viewer</title>
+  <title>{{ display_name }} — ModelSpace</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/viewer.css') }}" />
 </head>
@@ -889,7 +889,7 @@
         if (resp.ok) {
           const d = await resp.json();
           viewerTitle.textContent = d.name;
-          document.title = d.name + ' — 3D Viewer';
+          document.title = d.name + ' — ModelSpace';
           renameWrap.style.display  = 'none';
           btnRenameEl.style.display = '';
           viewerTitle.style.display = '';

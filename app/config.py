@@ -1,5 +1,5 @@
 """
-Configuration classes for the 3D Viewer application.
+Configuration classes for the ModelSpace application.
 Uses a base Config with Development and Production subclasses.
 Values are pulled from environment variables / .env file.
 """

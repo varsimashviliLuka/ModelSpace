@@ -51,13 +51,13 @@ def test_health_endpoint(client):
     assert response.status_code == 200
     data = response.get_json()
     assert data["status"] == "ok"
-    assert data["service"] == "3d-viewer"
+    assert data["service"] == "modelspace"
 
 
 def test_index_page(client):
     response = client.get("/")
     assert response.status_code == 200
-    assert b"3D Viewer" in response.data
+    assert b"ModelSpace" in response.data
     assert b".glb" in response.data
 
 

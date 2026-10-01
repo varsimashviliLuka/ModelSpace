@@ -296,7 +296,7 @@ function _repaintPanel(state, vs) {
 
   // Title
   ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 22px system-ui,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('3D Viewer Controls', W / 2, 44);
+  ctx.fillText('ModelSpace Controls', W / 2, 44);
 
   // Hint bar
   ctx.fillStyle = 'rgba(124,130,160,0.55)'; ctx.font = '11px system-ui,sans-serif';

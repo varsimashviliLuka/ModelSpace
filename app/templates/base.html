@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}3D Viewer{% endblock %}</title>
+  <title>{% block title %}ModelSpace{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
   {% block head_extra %}{% endblock %}
 </head>
 <body>
 
   <header class="site-header">
-    <a href="{{ url_for('main.index') }}" class="site-logo">⬡ 3D Viewer</a>
+    <a href="{{ url_for('main.index') }}" class="site-logo">⬡ ModelSpace</a>
   </header>
 
   <main class="site-main">

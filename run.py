@@ -52,7 +52,7 @@ def _ssl_context():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="3D Viewer dev server")
+    parser = argparse.ArgumentParser(description="ModelSpace dev server")
     parser.add_argument("--https", action="store_true", help="Run with HTTPS")
     parser.add_argument("--port", type=int, default=None, help="Override port")
     args = parser.parse_args()
