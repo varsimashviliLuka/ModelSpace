@@ -330,7 +330,8 @@ def save_viewer_settings(model_id: str):
       {
         "rotation": { "x": 0, "y": 90, "z": 0 },   # degrees 0–360
         "position": { "x": 0, "y": 0, "z": 0 },    # metres offset
-        "scale": 1.0,
+        "scale": 1.0,                 # multiplier of auto-fit when scale_relative=true
+        "scale_relative": true,
         "exposure": 1.0
       }
     """
@@ -360,9 +361,16 @@ def save_viewer_settings(model_id: str):
             )
         if "scale" in payload:
             scale = float(payload["scale"])
-            if not (0.01 <= scale <= 50):
-                return jsonify(error="scale must be between 0.01 and 50"), 422
+            if not (0.01 <= scale <= 500):
+                return jsonify(error="scale must be between 0.01 and 500"), 422
             current["scale"] = round(scale, 6)
+            # Prefer explicit flag; default new scale writes to relative
+            if "scale_relative" in payload:
+                current["scale_relative"] = bool(payload["scale_relative"])
+            else:
+                current["scale_relative"] = True
+        elif "scale_relative" in payload:
+            current["scale_relative"] = bool(payload["scale_relative"])
         if "exposure" in payload:
             exposure = float(payload["exposure"])
             if not (0.0 <= exposure <= 4.0):

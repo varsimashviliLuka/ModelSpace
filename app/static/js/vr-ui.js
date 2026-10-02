@@ -325,7 +325,7 @@ function _repaintPanel(state, vs) {
   const sX = 236, sY = 235, sW = 260, sH = 42;
   _rrect(ctx, sX, sY, sW, sH, 8, 'rgba(46,50,72,0.8)');
   if (vs.modelScale > 1) {
-    const sFrac = Math.min(Math.log10(vs.modelScale) / Math.log10(50), 1);
+    const sFrac = Math.min(Math.log10(vs.modelScale) / Math.log10(500), 1);
     _rrect(ctx, sX+2, sY+2, (sW-4)*sFrac, sH-4, 6, '#4caf81');
   }
   const sLabel = vs.modelScale

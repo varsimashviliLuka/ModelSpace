@@ -50,6 +50,40 @@ a { color: var(--color-primary); text-decoration: none; }
 a:hover { color: var(--color-primary-h); text-decoration: underline; }
 
 /* ----------------------------------------------------------------
+   Scrollbars (Firefox + WebKit)
+   ---------------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ----------------------------------------------------------------
    Layout
    ---------------------------------------------------------------- */
 .site-header {

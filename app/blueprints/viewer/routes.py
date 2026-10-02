@@ -104,6 +104,7 @@ def view_model(model_id: str):
             if vs.get("scale") is not None
             else None
         ),
+        "scale_relative": bool(vs.get("scale_relative", False)),
         "exposure": float(vs.get("exposure", 1.0) or 1.0),
     }
 

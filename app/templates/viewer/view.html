@@ -57,79 +57,92 @@
 
     <!-- Exposure -->
     <section class="panel-section">
-      <label class="panel-label" for="exposure-slider">
-        ☀ Exposure <span id="exposure-value" class="panel-value">1.00</span>
-      </label>
-      <input id="exposure-slider" type="range" min="0" max="4" step="0.05" value="1.0" class="range-slider" />
-    </section>
-
-    <!-- Model scale -->
-    <section class="panel-section">
-      <label class="panel-label" for="scale-slider">
-        ⊞ Scale <span id="scale-value" class="panel-value">1.00×</span>
-      </label>
-      <input id="scale-slider" type="range" min="-2" max="1.699" step="0.001" value="0"
-             class="range-slider" title="Model scale (log)" />
-      <div class="scale-btns">
-        <button class="scale-preset-btn" data-scale="0.1" title="0.1×">0.1×</button>
-        <button class="scale-preset-btn" data-scale="0.5" title="0.5×">½×</button>
-        <button class="scale-preset-btn scale-preset-btn--active" data-scale="1"   title="1×">1×</button>
-        <button class="scale-preset-btn" data-scale="2"   title="2×">2×</button>
-        <button class="scale-preset-btn" data-scale="5"   title="5×">5×</button>
-        <button class="scale-preset-btn" data-scale="10"  title="10×">10×</button>
+      <div class="panel-label">☀ Exposure</div>
+      <div class="control-row">
+        <input id="exposure-slider" type="range" min="0" max="4" step="0.05" value="1.0" class="range-slider" />
+        <input id="exposure-input" type="number" class="num-input" min="0" max="4" step="0.05" value="1" title="Exposure" />
       </div>
+      <button type="button" id="btn-exposure-reset" class="axis-reset-btn">Reset exposure</button>
     </section>
 
-    <!-- Rotation (persisted) -->
+    <!-- Model scale (relative to auto-fit = 1×) -->
+    <section class="panel-section">
+      <div class="panel-label">⊞ Scale <span class="panel-hint">1× = fitted size</span></div>
+      <div class="control-row">
+        <input id="scale-slider" type="range" min="-2" max="2.699" step="0.01" value="0"
+               class="range-slider" title="Scale multiplier (log)" />
+        <input id="scale-input" type="number" class="num-input" min="0.01" max="500" step="0.1" value="1" title="Scale ×" />
+      </div>
+      <div class="scale-btns">
+        <button type="button" class="scale-preset-btn" data-scale="0.1" title="0.1× fitted">0.1×</button>
+        <button type="button" class="scale-preset-btn" data-scale="0.5" title="0.5× fitted">½×</button>
+        <button type="button" class="scale-preset-btn scale-preset-btn--active" data-scale="1" title="Fitted size">1×</button>
+        <button type="button" class="scale-preset-btn" data-scale="2" title="2× fitted">2×</button>
+        <button type="button" class="scale-preset-btn" data-scale="5" title="5× fitted">5×</button>
+        <button type="button" class="scale-preset-btn" data-scale="10" title="10× fitted">10×</button>
+        <button type="button" class="scale-preset-btn" data-scale="50" title="50× fitted">50×</button>
+        <button type="button" class="scale-preset-btn" data-scale="100" title="100× fitted">100×</button>
+      </div>
+      <button type="button" id="btn-scale-reset" class="axis-reset-btn">Reset scale</button>
+    </section>
+
+    <!-- Rotation (persisted, snap 30°) -->
     <section class="panel-section">
       <div class="panel-label">
         ↻ Rotation
-        <span id="rotation-value" class="panel-value">0° / 0° / 0°</span>
+        <span class="panel-hint">snap 30°</span>
       </div>
       <div class="axis-sliders">
-        <label class="axis-slider" for="rot-x">
+        <div class="axis-slider">
           <span class="axis-slider__axis">X</span>
-          <input id="rot-x" type="range" min="0" max="360" step="1" value="0" class="range-slider" />
-          <span class="axis-slider__val" id="rot-x-val">0°</span>
-        </label>
-        <label class="axis-slider" for="rot-y">
+          <input id="rot-x" type="range" min="0" max="360" step="30" value="0" class="range-slider" />
+          <input id="rot-x-input" type="number" class="num-input num-input--deg" min="0" max="360" step="30" value="0" />
+        </div>
+        <div class="axis-slider">
           <span class="axis-slider__axis">Y</span>
-          <input id="rot-y" type="range" min="0" max="360" step="1" value="0" class="range-slider" />
-          <span class="axis-slider__val" id="rot-y-val">0°</span>
-        </label>
-        <label class="axis-slider" for="rot-z">
+          <input id="rot-y" type="range" min="0" max="360" step="30" value="0" class="range-slider" />
+          <input id="rot-y-input" type="number" class="num-input num-input--deg" min="0" max="360" step="30" value="0" />
+        </div>
+        <div class="axis-slider">
           <span class="axis-slider__axis">Z</span>
-          <input id="rot-z" type="range" min="0" max="360" step="1" value="0" class="range-slider" />
-          <span class="axis-slider__val" id="rot-z-val">0°</span>
-        </label>
+          <input id="rot-z" type="range" min="0" max="360" step="30" value="0" class="range-slider" />
+          <input id="rot-z-input" type="number" class="num-input num-input--deg" min="0" max="360" step="30" value="0" />
+        </div>
       </div>
       <button type="button" id="btn-rotation-reset" class="axis-reset-btn">Reset rotation</button>
     </section>
 
-    <!-- Position offset (persisted) -->
+    <!-- Position offset (persisted, snap 0.5) -->
     <section class="panel-section">
       <div class="panel-label">
         ✥ Position
-        <span id="position-value" class="panel-value">0 / 0 / 0</span>
+        <span class="panel-hint">snap 0.5</span>
       </div>
       <div class="axis-sliders">
-        <label class="axis-slider" for="pos-x">
+        <div class="axis-slider">
           <span class="axis-slider__axis">X</span>
-          <input id="pos-x" type="range" min="-10" max="10" step="0.01" value="0" class="range-slider" />
-          <span class="axis-slider__val" id="pos-x-val">0.00</span>
-        </label>
-        <label class="axis-slider" for="pos-y">
+          <input id="pos-x" type="range" min="-10" max="10" step="0.5" value="0" class="range-slider" />
+          <input id="pos-x-input" type="number" class="num-input" min="-10" max="10" step="0.5" value="0" />
+        </div>
+        <div class="axis-slider">
           <span class="axis-slider__axis">Y</span>
-          <input id="pos-y" type="range" min="-10" max="10" step="0.01" value="0" class="range-slider" />
-          <span class="axis-slider__val" id="pos-y-val">0.00</span>
-        </label>
-        <label class="axis-slider" for="pos-z">
+          <input id="pos-y" type="range" min="-10" max="10" step="0.5" value="0" class="range-slider" />
+          <input id="pos-y-input" type="number" class="num-input" min="-10" max="10" step="0.5" value="0" />
+        </div>
+        <div class="axis-slider">
           <span class="axis-slider__axis">Z</span>
-          <input id="pos-z" type="range" min="-10" max="10" step="0.01" value="0" class="range-slider" />
-          <span class="axis-slider__val" id="pos-z-val">0.00</span>
-        </label>
+          <input id="pos-z" type="range" min="-10" max="10" step="0.5" value="0" class="range-slider" />
+          <input id="pos-z-input" type="number" class="num-input" min="-10" max="10" step="0.5" value="0" />
+        </div>
       </div>
       <button type="button" id="btn-position-reset" class="axis-reset-btn">Reset position</button>
+    </section>
+
+    <section class="panel-section">
+      <button type="button" id="btn-restore-defaults" class="btn-restore-defaults">
+        Restore default settings
+      </button>
+      <p class="panel-footnote">Resets rotation, position, scale (to fitted), and exposure.</p>
     </section>
 
     <!-- Animation -->
@@ -223,11 +236,12 @@
     const errorOverlay    = document.getElementById('error-overlay');
     const errorText       = document.getElementById('error-text');
     const exposureSlider  = document.getElementById('exposure-slider');
-    const exposureValue   = document.getElementById('exposure-value');
+    const exposureInput   = document.getElementById('exposure-input');
+    const btnExposureReset= document.getElementById('btn-exposure-reset');
     const scaleSlider     = document.getElementById('scale-slider');
-    const scaleValue      = document.getElementById('scale-value');
-    const rotationValue   = document.getElementById('rotation-value');
-    const positionValue   = document.getElementById('position-value');
+    const scaleInput      = document.getElementById('scale-input');
+    const btnScaleReset   = document.getElementById('btn-scale-reset');
+    const btnRestoreAll   = document.getElementById('btn-restore-defaults');
     const btnRotReset     = document.getElementById('btn-rotation-reset');
     const btnPosReset     = document.getElementById('btn-position-reset');
     const rotSliders = {
@@ -235,20 +249,20 @@
       y: document.getElementById('rot-y'),
       z: document.getElementById('rot-z'),
     };
-    const rotVals = {
-      x: document.getElementById('rot-x-val'),
-      y: document.getElementById('rot-y-val'),
-      z: document.getElementById('rot-z-val'),
+    const rotInputs = {
+      x: document.getElementById('rot-x-input'),
+      y: document.getElementById('rot-y-input'),
+      z: document.getElementById('rot-z-input'),
     };
     const posSliders = {
       x: document.getElementById('pos-x'),
       y: document.getElementById('pos-y'),
       z: document.getElementById('pos-z'),
     };
-    const posVals = {
-      x: document.getElementById('pos-x-val'),
-      y: document.getElementById('pos-y-val'),
-      z: document.getElementById('pos-z-val'),
+    const posInputs = {
+      x: document.getElementById('pos-x-input'),
+      y: document.getElementById('pos-y-input'),
+      z: document.getElementById('pos-z-input'),
     };
     const animSection     = document.getElementById('anim-section');
     const animClipWrap    = document.getElementById('anim-clip-wrap');
@@ -383,8 +397,15 @@
     const savedCamPos=new THREE.Vector3(), savedCamTarget=new THREE.Vector3();
 
     // ── Model root + persisted viewer settings ─────────────────
+    // Scale bug fix: UI uses a multiplier relative to auto-fit size.
+    // 1× = fitted. Old saves stored absolute Three.js scale; we convert on load.
+    const ROT_SNAP = 30;
+    const POS_SNAP = 0.5;
+    const SCALE_MIN = 0.01;
+    const SCALE_MAX = 500;
     let modelRoot = null;
-    let currentScale = 1.0;
+    let fitScale = 1.0;           // auto-fit baseline
+    let scaleMultiplier = 1.0;    // user-facing scale (1 = fitted)
     let currentRotation = {
       x: Number(SAVED?.rotation?.x) || 0,
       y: Number(SAVED?.rotation?.y) || 0,
@@ -397,7 +418,6 @@
     };
     let saveSettingsTimer = null;
     let suppressPersist = false;
-    const hasSavedScale = SAVED?.scale != null && Number(SAVED.scale) > 0;
 
     function normalizeDeg(v) {
       let d = Number(v) % 360;
@@ -408,30 +428,44 @@
 
     function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
+    function snapTo(v, step) {
+      if (!step || step <= 0) return v;
+      return Math.round(v / step) * step;
+    }
+
+    function actualScale() {
+      return fitScale * scaleMultiplier;
+    }
+
     function updateRotationUI() {
       for (const axis of ['x', 'y', 'z']) {
         const v = normalizeDeg(currentRotation[axis]);
         currentRotation[axis] = v;
         if (rotSliders[axis]) rotSliders[axis].value = v;
-        if (rotVals[axis]) rotVals[axis].textContent = `${Math.round(v)}°`;
-      }
-      if (rotationValue) {
-        rotationValue.textContent =
-          `${Math.round(currentRotation.x)}° / ${Math.round(currentRotation.y)}° / ${Math.round(currentRotation.z)}°`;
+        if (rotInputs[axis]) rotInputs[axis].value = Math.round(v);
       }
     }
 
     function updatePositionUI() {
       for (const axis of ['x', 'y', 'z']) {
         const v = clamp(Number(currentPosition[axis]) || 0, -10, 10);
-        currentPosition[axis] = Math.round(v * 100) / 100;
+        currentPosition[axis] = Math.round(v * 1000) / 1000;
         if (posSliders[axis]) posSliders[axis].value = currentPosition[axis];
-        if (posVals[axis]) posVals[axis].textContent = currentPosition[axis].toFixed(2);
+        if (posInputs[axis]) posInputs[axis].value = currentPosition[axis];
       }
-      if (positionValue) {
-        positionValue.textContent =
-          `${currentPosition.x.toFixed(2)} / ${currentPosition.y.toFixed(2)} / ${currentPosition.z.toFixed(2)}`;
-      }
+    }
+
+    function updateScaleUI() {
+      const m = scaleMultiplier;
+      const logVal = Math.log10(clamp(m, SCALE_MIN, SCALE_MAX));
+      scaleSlider.value = logVal;
+      scaleInput.value = m >= 10 ? m.toFixed(1) : (m < 0.1 ? m.toFixed(3) : m.toFixed(2));
+      document.querySelectorAll('.scale-preset-btn').forEach(b => {
+        b.classList.toggle(
+          'scale-preset-btn--active',
+          Math.abs(parseFloat(b.dataset.scale) - m) < 0.001
+        );
+      });
     }
 
     function applyModelRotation() {
@@ -446,7 +480,7 @@
     function recenterAfterTransform() {
       if (!modelRoot) return;
       modelRoot.position.set(0, 0, 0);
-      modelRoot.scale.setScalar(currentScale);
+      modelRoot.scale.setScalar(actualScale());
       const box = new THREE.Box3().setFromObject(modelRoot);
       const ctr = new THREE.Vector3();
       box.getCenter(ctr);
@@ -458,11 +492,19 @@
       modelRoot.position.z += currentPosition.z;
     }
 
-    function setModelRotation(next, { persist = true } = {}) {
+    function setModelRotation(next, { persist = true, snap = false } = {}) {
+      let x = Number(next.x) || 0;
+      let y = Number(next.y) || 0;
+      let z = Number(next.z) || 0;
+      if (snap) {
+        x = snapTo(x, ROT_SNAP);
+        y = snapTo(y, ROT_SNAP);
+        z = snapTo(z, ROT_SNAP);
+      }
       currentRotation = {
-        x: normalizeDeg(Number(next.x) || 0),
-        y: normalizeDeg(Number(next.y) || 0),
-        z: normalizeDeg(Number(next.z) || 0),
+        x: normalizeDeg(x),
+        y: normalizeDeg(y),
+        z: normalizeDeg(z),
       };
       applyModelRotation();
       recenterAfterTransform();
@@ -470,11 +512,19 @@
       if (persist) scheduleSaveSettings();
     }
 
-    function setModelPosition(next, { persist = true } = {}) {
+    function setModelPosition(next, { persist = true, snap = false } = {}) {
+      let x = Number(next.x) || 0;
+      let y = Number(next.y) || 0;
+      let z = Number(next.z) || 0;
+      if (snap) {
+        x = snapTo(x, POS_SNAP);
+        y = snapTo(y, POS_SNAP);
+        z = snapTo(z, POS_SNAP);
+      }
       currentPosition = {
-        x: clamp(Number(next.x) || 0, -10, 10),
-        y: clamp(Number(next.y) || 0, -10, 10),
-        z: clamp(Number(next.z) || 0, -10, 10),
+        x: clamp(x, -10, 10),
+        y: clamp(y, -10, 10),
+        z: clamp(z, -10, 10),
       };
       recenterAfterTransform();
       updatePositionUI();
@@ -484,7 +534,7 @@
     function nudgeRotation(axis, deltaDeg) {
       const next = { ...currentRotation };
       next[axis] = (next[axis] || 0) + deltaDeg;
-      setModelRotation(next);
+      setModelRotation(next, { snap: true });
     }
 
     function scheduleSaveSettings() {
@@ -501,7 +551,8 @@
           body: JSON.stringify({
             rotation: currentRotation,
             position: currentPosition,
-            scale: currentScale,
+            scale: scaleMultiplier,
+            scale_relative: true,
             exposure: renderer.toneMappingExposure,
           }),
         });
@@ -521,7 +572,7 @@
         isPlaying,
         exposure:    renderer.toneMappingExposure,
         hasAnimation: clips.length > 0,
-        modelScale:  currentScale,
+        modelScale:  scaleMultiplier,
         rotation:    { ...currentRotation },
         position:    { ...currentPosition },
       };
@@ -531,31 +582,28 @@
       const val = clamp(Number(v) || 0, 0, 4);
       renderer.toneMappingExposure = val;
       exposureSlider.value = val;
-      exposureValue.textContent = val.toFixed(2);
+      exposureInput.value = val.toFixed(2);
       if (persist) scheduleSaveSettings();
     }
 
-    // Scale is applied to modelRoot only (not scene), log slider for usable range
-    // slider range is log10: -2 → 0.01×, 0 → 1×, 1.699 → ~50×
+    // User-facing scale is a multiplier of the auto-fit size (1× = fitted).
     function setModelScale(v, { persist = true } = {}) {
-      currentScale = clamp(Number(v) || 1, 0.01, 50);
-      if (modelRoot) {
-        modelRoot.scale.setScalar(currentScale);
-        recenterAfterTransform();
-      }
-      const logVal = Math.log10(currentScale);
-      scaleSlider.value = logVal;
-      scaleValue.textContent = currentScale >= 10
-        ? currentScale.toFixed(1) + '×'
-        : currentScale.toFixed(currentScale < 0.1 ? 3 : 2) + '×';
-      document.querySelectorAll('.scale-preset-btn').forEach(b => {
-        b.classList.toggle('scale-preset-btn--active', parseFloat(b.dataset.scale) === currentScale);
-      });
+      scaleMultiplier = clamp(Number(v) || 1, SCALE_MIN, SCALE_MAX);
+      if (modelRoot) recenterAfterTransform();
+      updateScaleUI();
       if (persist) scheduleSaveSettings();
     }
 
-    function scaleUp()   { setModelScale(currentScale * 2); }
-    function scaleDown() { setModelScale(currentScale / 2); }
+    function scaleUp()   { setModelScale(scaleMultiplier * 2); }
+    function scaleDown() { setModelScale(scaleMultiplier / 2); }
+
+    function restoreDefaultSettings() {
+      setModelRotation({ x: 0, y: 0, z: 0 }, { persist: false });
+      setModelPosition({ x: 0, y: 0, z: 0 }, { persist: false });
+      setModelScale(1, { persist: false });
+      setExposure(1, { persist: false });
+      scheduleSaveSettings();
+    }
 
     function playAnim()  { if(!activeAction)return; activeAction.paused=false; isPlaying=true;  updatePPUI(); }
     function pauseAnim() { if(!activeAction)return; activeAction.paused=true;  isPlaying=false; updatePPUI(); }
@@ -608,15 +656,29 @@
     function fitModel(obj) {
       suppressPersist = true;
       applyModelRotation();
+      // Measure unscaled bounds for a stable fit baseline
+      obj.scale.setScalar(1);
+      obj.position.set(0, 0, 0);
       const box=new THREE.Box3().setFromObject(obj);
       const sz=new THREE.Vector3(), ctr=new THREE.Vector3();
       box.getSize(sz); box.getCenter(ctr);
       const mx=Math.max(sz.x,sz.y,sz.z); if(mx===0){ suppressPersist=false; return; }
-      let sc=2/mx;
-      if (hasSavedScale) sc = Number(SAVED.scale);
-      obj.scale.setScalar(sc);
-      currentScale = sc;
 
+      fitScale = 2 / mx;
+
+      // Resolve saved scale → multiplier relative to fit
+      if (SAVED?.scale != null && Number(SAVED.scale) > 0) {
+        if (SAVED.scale_relative) {
+          scaleMultiplier = clamp(Number(SAVED.scale), SCALE_MIN, SCALE_MAX);
+        } else {
+          // Legacy absolute Three.js scale → convert to multiplier
+          scaleMultiplier = clamp(Number(SAVED.scale) / fitScale, SCALE_MIN, SCALE_MAX);
+        }
+      } else {
+        scaleMultiplier = 1;
+      }
+
+      obj.scale.setScalar(actualScale());
       box.setFromObject(obj); box.getCenter(ctr);
       obj.position.sub(ctr);
       obj.position.y += (box.max.y - box.min.y) * 0.5;
@@ -624,6 +686,7 @@
       obj.position.y += currentPosition.y;
       obj.position.z += currentPosition.z;
 
+      const sc = actualScale();
       const dist=2*2.2;
       camera.position.set(dist*.6, dist*.5, dist);
       camera.near=mx*sc*0.001; camera.far=mx*sc*100; camera.updateProjectionMatrix();
@@ -631,12 +694,11 @@
       savedCamPos.copy(camera.position); savedCamTarget.copy(controls.target);
       const fp=Math.max(sz.x,sz.z)*sc*4; gridHelper.scale.set(fp/10,1,fp/10);
 
-      const logVal = Math.log10(currentScale);
-      scaleSlider.value = logVal;
-      scaleValue.textContent = currentScale.toFixed(3) + '×';
+      updateScaleUI();
       updateRotationUI();
       updatePositionUI();
       if (SAVED?.exposure != null) setExposure(SAVED.exposure, { persist: false });
+      else setExposure(1, { persist: false });
       suppressPersist = false;
     }
 
@@ -805,30 +867,49 @@
     }
 
     // ── Desktop UI events ──────────────────────────────────────
-    exposureSlider.addEventListener('input', ()=>setExposure(parseFloat(exposureSlider.value)));
+    exposureSlider.addEventListener('input', () => setExposure(parseFloat(exposureSlider.value)));
+    exposureInput.addEventListener('change', () => setExposure(parseFloat(exposureInput.value)));
+    btnExposureReset?.addEventListener('click', () => setExposure(1));
 
-    // Scale slider uses log10 mapping for comfortable range
-    scaleSlider.addEventListener('input', ()=>{
-      const linearScale = Math.pow(10, parseFloat(scaleSlider.value));
-      setModelScale(linearScale);
+    scaleSlider.addEventListener('input', () => {
+      setModelScale(Math.pow(10, parseFloat(scaleSlider.value)));
     });
+    scaleInput.addEventListener('change', () => setModelScale(parseFloat(scaleInput.value)));
+    btnScaleReset?.addEventListener('click', () => setModelScale(1));
 
     document.querySelectorAll('.scale-preset-btn').forEach(btn => {
-      btn.addEventListener('click', ()=>setModelScale(parseFloat(btn.dataset.scale)));
+      btn.addEventListener('click', () => setModelScale(parseFloat(btn.dataset.scale)));
     });
 
     for (const axis of ['x', 'y', 'z']) {
       rotSliders[axis]?.addEventListener('input', () => {
-        const next = { ...currentRotation, [axis]: parseFloat(rotSliders[axis].value) };
-        setModelRotation(next);
+        setModelRotation(
+          { ...currentRotation, [axis]: parseFloat(rotSliders[axis].value) },
+          { snap: true },
+        );
+      });
+      rotInputs[axis]?.addEventListener('change', () => {
+        setModelRotation(
+          { ...currentRotation, [axis]: parseFloat(rotInputs[axis].value) },
+          { snap: false },
+        );
       });
       posSliders[axis]?.addEventListener('input', () => {
-        const next = { ...currentPosition, [axis]: parseFloat(posSliders[axis].value) };
-        setModelPosition(next);
+        setModelPosition(
+          { ...currentPosition, [axis]: parseFloat(posSliders[axis].value) },
+          { snap: true },
+        );
+      });
+      posInputs[axis]?.addEventListener('change', () => {
+        setModelPosition(
+          { ...currentPosition, [axis]: parseFloat(posInputs[axis].value) },
+          { snap: false },
+        );
       });
     }
     btnRotReset?.addEventListener('click', () => setModelRotation({ x: 0, y: 0, z: 0 }));
     btnPosReset?.addEventListener('click', () => setModelPosition({ x: 0, y: 0, z: 0 }));
+    btnRestoreAll?.addEventListener('click', restoreDefaultSettings);
 
     btnPlay.addEventListener('click',   playAnim);
     btnPause.addEventListener('click',  pauseAnim);
@@ -847,7 +928,6 @@
 
     btnReset.addEventListener('click', ()=>{
       camera.position.copy(savedCamPos); controls.target.copy(savedCamTarget); controls.update();
-      setModelScale(1);
     });
     btnFullscreen.addEventListener('click', ()=>{
       const w=document.getElementById('viewer-wrap');

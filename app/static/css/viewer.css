@@ -129,6 +129,49 @@
 }
 
 /* Axis sliders (rotation / position) */
+.panel-hint {
+  margin-left: .35rem;
+  font-size: .72rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  opacity: .85;
+}
+
+.panel-footnote {
+  margin: .45rem 0 0;
+  font-size: .72rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.control-row {
+  display: grid;
+  grid-template-columns: 1fr 4.2rem;
+  gap: .45rem;
+  align-items: center;
+  margin-top: .35rem;
+}
+
+.num-input {
+  width: 100%;
+  min-width: 0;
+  padding: .28rem .35rem;
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  outline: none;
+}
+.num-input:focus {
+  border-color: var(--color-primary);
+}
+.num-input--deg {
+  padding-right: .3rem;
+}
+
 .axis-sliders {
   display: flex;
   flex-direction: column;
@@ -138,7 +181,7 @@
 
 .axis-slider {
   display: grid;
-  grid-template-columns: 1.1rem 1fr 2.6rem;
+  grid-template-columns: 1.1rem 1fr 4.2rem;
   align-items: center;
   gap: .4rem;
 }
@@ -147,13 +190,6 @@
   font-size: .78rem;
   font-weight: 600;
   color: var(--color-text-muted);
-}
-
-.axis-slider__val {
-  font-size: .72rem;
-  color: var(--color-text-muted);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .axis-reset-btn {
@@ -170,6 +206,24 @@
 .axis-reset-btn:hover {
   border-color: var(--color-text-muted);
   color: var(--color-text);
+}
+
+.btn-restore-defaults {
+  width: 100%;
+  padding: .55rem .75rem;
+  font-size: .82rem;
+  font-weight: 600;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.btn-restore-defaults:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
 }
 
 .viewer-topbar__actions {
@@ -284,6 +338,24 @@
   display: flex;
   flex-direction: column;
   gap: .25rem;
+  scrollbar-gutter: stable;
+}
+
+.side-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.side-panel::-webkit-scrollbar-thumb {
+  background: rgba(124, 130, 160, 0.35);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.side-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 130, 160, 0.6);
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 .panel-section {
