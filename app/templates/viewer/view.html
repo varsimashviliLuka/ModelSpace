@@ -42,8 +42,17 @@
   <div id="viewer-wrap">
     <canvas id="viewer-canvas"></canvas>
     <div id="loading-overlay" class="loading-overlay">
-      <div class="loading-spinner"></div>
-      <div id="loading-text" class="loading-text">Loading model…</div>
+      <div class="loading-orb" aria-hidden="true">
+        <div class="loading-orb__ring"></div>
+        <div class="loading-orb__ring loading-orb__ring--2"></div>
+        <div class="loading-orb__core">⬡</div>
+      </div>
+      <div class="loading-brand">ModelSpace</div>
+      <div id="loading-text" class="loading-text">Preparing viewer…</div>
+      <div id="loading-bar-wrap" class="loading-bar-wrap">
+        <div id="loading-bar" class="loading-bar"></div>
+      </div>
+      <div id="loading-tip" class="loading-tip"></div>
     </div>
     <div id="error-overlay" class="error-overlay" style="display:none">
       <div class="error-overlay__icon">⚠️</div>
@@ -233,6 +242,9 @@
     const canvas          = document.getElementById('viewer-canvas');
     const loadingOverlay  = document.getElementById('loading-overlay');
     const loadingText     = document.getElementById('loading-text');
+    const loadingBarWrap  = document.getElementById('loading-bar-wrap');
+    const loadingBar      = document.getElementById('loading-bar');
+    const loadingTip      = document.getElementById('loading-tip');
     const errorOverlay    = document.getElementById('error-overlay');
     const errorText       = document.getElementById('error-text');
     const exposureSlider  = document.getElementById('exposure-slider');
@@ -643,14 +655,85 @@
     });
 
     // ── Loading helpers ────────────────────────────────────────
+    // Edit tips & facts in /static/tips.json
+    const TIP_INTERVAL_MS = 5500;
+    let tipTimer = null;
+    let tipQueue = [];
+    let tipIndex = 0;
+
+    function shuffleTips(list) {
+      const arr = list.slice();
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function buildTipQueue(data) {
+      const tips = Array.isArray(data?.tips) ? data.tips : [];
+      const facts = Array.isArray(data?.facts) ? data.facts : [];
+      // Legacy: plain string array still works
+      const legacy = Array.isArray(data) ? data : [];
+      const labeled = [
+        ...tips.filter((t) => typeof t === 'string' && t.trim()).map((t) => `Tip: ${t}`),
+        ...facts.filter((t) => typeof t === 'string' && t.trim()).map((t) => `Fact: ${t}`),
+        ...legacy.filter((t) => typeof t === 'string' && t.trim()),
+      ];
+      return shuffleTips(labeled);
+    }
+
+    function showNextTip() {
+      if (!loadingTip || !tipQueue.length) return;
+      loadingTip.style.opacity = '0';
+      setTimeout(() => {
+        if (!tipQueue.length) return;
+        loadingTip.textContent = tipQueue[tipIndex % tipQueue.length];
+        tipIndex += 1;
+        if (tipIndex % tipQueue.length === 0) {
+          tipQueue = shuffleTips(tipQueue);
+          tipIndex = 0;
+        }
+        loadingTip.style.opacity = '0.85';
+      }, 280);
+    }
+
+    function startLoadingTips(data) {
+      if (!loadingTip) return;
+      tipQueue = buildTipQueue(data);
+      if (!tipQueue.length) return;
+      tipIndex = 0;
+      showNextTip();
+      tipTimer = setInterval(showNextTip, TIP_INTERVAL_MS);
+    }
+    function stopLoadingTips() {
+      if (tipTimer) { clearInterval(tipTimer); tipTimer = null; }
+    }
+
+    fetch('/static/tips.json')
+      .then((r) => (r.ok ? r.json() : { tips: [], facts: [] }))
+      .then((data) => startLoadingTips(data))
+      .catch(() => {});
+
     function showError(msg) {
+      stopLoadingTips();
       loadingOverlay.style.display = 'none';
       errorOverlay.style.display = 'flex';
       errorText.textContent = msg;
     }
     function hideLoading() {
+      stopLoadingTips();
       loadingOverlay.style.opacity = '0';
-      setTimeout(()=>{ loadingOverlay.style.display='none'; }, 400);
+      setTimeout(() => { loadingOverlay.style.display = 'none'; }, 400);
+    }
+    function setLoadProgress(pct, label) {
+      if (label) loadingText.textContent = label;
+      if (pct == null || pct < 0) {
+        // indeterminate pulse width
+        loadingBar.style.width = '28%';
+        return;
+      }
+      loadingBar.style.width = `${Math.min(100, Math.max(6, pct))}%`;
     }
 
     function fitModel(obj) {
@@ -763,6 +846,7 @@
 
     // ── Loaders ────────────────────────────────────────────────
     function loadGLTF(url) {
+      setLoadProgress(0, 'Downloading model…');
       new GLTFLoader().load(
         url,
         (gltf) => {
@@ -773,7 +857,14 @@
           if (gltf.animations?.length) setupAnimations(modelRoot, gltf.animations);
           onModelLoaded();
         },
-        (p) => { if(p.total>0) loadingText.textContent=`Loading… ${Math.round(p.loaded/p.total*100)}%`; },
+        (p) => {
+          if (p.total > 0) {
+            const pct = Math.round(p.loaded / p.total * 100);
+            setLoadProgress(pct, `Downloading… ${pct}%`);
+          } else {
+            setLoadProgress(null, 'Downloading model…');
+          }
+        },
         (e) => showError(`GLTF load failed: ${e.message||e}`)
       );
     }
@@ -782,13 +873,17 @@
       function doOBJ(mats) {
         const loader = new OBJLoader();
         if (mats) loader.setMaterials(mats);
-        loadingText.textContent = 'Parsing OBJ (large files can take a while)…';
+        setLoadProgress(null, 'Loading mesh…');
         loader.load(
           objURL,
           (obj) => {
             if (!mats) {
-              obj.traverse(c=>{
-                if(c.isMesh) c.material=new THREE.MeshStandardMaterial({color:0xaaaaaa,roughness:.6,metalness:.1});
+              obj.traverse((c) => {
+                if (c.isMesh) {
+                  c.material = new THREE.MeshStandardMaterial({
+                    color: 0xaaaaaa, roughness: 0.6, metalness: 0.1,
+                  });
+                }
               });
             }
             modelRoot = obj;
@@ -799,7 +894,10 @@
           },
           (p) => {
             if (p.total > 0) {
-              loadingText.textContent = `Loading OBJ… ${Math.round(p.loaded / p.total * 100)}%`;
+              const pct = Math.round(p.loaded / p.total * 100);
+              setLoadProgress(pct, `Loading mesh… ${pct}%`);
+            } else {
+              setLoadProgress(null, 'Loading mesh…');
             }
           },
           (e) => showError(`OBJ load failed: ${e.message||e}`)
@@ -807,7 +905,7 @@
       }
 
       if (mtlURL) {
-        loadingText.textContent = 'Loading materials & textures…';
+        setLoadProgress(null, 'Loading materials & textures…');
         const ml = new MTLLoader();
         const resourcePath = RESOURCE_BASE
           ? `/view/${MODEL_ID}/asset/${RESOURCE_BASE}/`
@@ -816,7 +914,6 @@
         ml.load(
           mtlURL,
           (mats) => {
-            // Hook texture loads so we clamp size before GPU upload.
             const creator = mats;
             const origLoadTexture = creator.loadTexture.bind(creator);
             creator.loadTexture = function (url, mapping, onLoad, onProgress, onError) {

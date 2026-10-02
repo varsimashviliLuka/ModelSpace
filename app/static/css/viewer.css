@@ -274,6 +274,7 @@
 }
 
 /* ── Loading overlay ────────────────────────────────────────────── */
+/* ── Loading overlay ────────────────────────────────────────────── */
 .loading-overlay {
   position: absolute;
   inset: 0;
@@ -281,26 +282,104 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.2rem;
-  background: var(--color-bg);
+  gap: .85rem;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 40%, rgba(108, 99, 255, 0.18), transparent 70%),
+    var(--color-bg);
   z-index: 10;
-  transition: opacity .4s;
+  transition: opacity .4s ease;
+  overflow: hidden;
 }
 
-.loading-spinner {
-  width: 44px;
-  height: 44px;
-  border: 3px solid var(--color-border);
+.loading-orb {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  margin-bottom: .35rem;
+}
+
+.loading-orb__ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid transparent;
   border-top-color: var(--color-primary);
+  border-right-color: rgba(108, 99, 255, 0.35);
   border-radius: 50%;
-  animation: spin .8s linear infinite;
+  animation: orb-spin 1.1s linear infinite;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+.loading-orb__ring--2 {
+  inset: 10px;
+  border-top-color: var(--color-primary-h);
+  border-right-color: transparent;
+  border-bottom-color: rgba(136, 128, 255, 0.4);
+  animation-duration: 1.7s;
+  animation-direction: reverse;
+}
+
+.loading-orb__core {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  color: var(--color-primary-h);
+  animation: orb-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes orb-spin { to { transform: rotate(360deg); } }
+@keyframes orb-pulse {
+  0%, 100% { transform: scale(1); opacity: .85; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+.loading-brand {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
 
 .loading-text {
   color: var(--color-text-muted);
   font-size: .9rem;
+  min-height: 1.35em;
+}
+
+.loading-bar-wrap {
+  width: min(260px, 70vw);
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-surface-2);
+  overflow: hidden;
+  margin-top: .15rem;
+}
+
+.loading-bar {
+  height: 100%;
+  width: 8%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-h));
+  transition: width .2s ease;
+  animation: bar-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes bar-shimmer {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.25); }
+}
+
+.loading-tip {
+  margin-top: .55rem;
+  max-width: min(320px, 80vw);
+  text-align: center;
+  font-size: .78rem;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+  opacity: .85;
+  min-height: 2.6em;
+  transition: opacity .35s ease;
 }
 
 /* ── Error overlay ──────────────────────────────────────────────── */
