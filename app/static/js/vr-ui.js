@@ -84,34 +84,108 @@ const _heightDownBinding = () => _binding('heightDown',  1, 4);
 const _heightUpBinding   = () => _binding('heightUp',    1, 5);
 
 // ─────────────────────────────────────────────────────────────────
-// Panel layout (pixel coords on 512 × 420 canvas)
+// Panel layout — canvas aspect must match the 3D plane or UV hit
+// testing and text look stretched / clipped.
 // ─────────────────────────────────────────────────────────────────
 
-const PANEL_WIDTH    = 0.58;
-const PANEL_HEIGHT   = 0.58;
-const PANEL_DISTANCE = 0.65;
-const PANEL_Y_OFFSET = 0.05;
 const TEX_W          = 512;
-const TEX_H          = 520;
+const TEX_H          = 640;
+const PANEL_WIDTH    = 0.50;                                    // metres wide
+const PANEL_HEIGHT   = PANEL_WIDTH * (TEX_H / TEX_W);           // keep aspect
+const PANEL_DISTANCE = 0.70;
+const PANEL_Y_OFFSET = 0.02;
 const RAY_LENGTH     = 8;
 
-const PANEL_BUTTONS = [
-  { id: 'play',        label: '▶  Play',    x: 24,  y: 110, w: 136, h: 40 },
-  { id: 'pause',       label: '⏸  Pause',   x: 178, y: 110, w: 136, h: 40 },
-  { id: 'rewind',      label: '⏮  Rewind',  x: 332, y: 110, w: 156, h: 40 },
-  { id: 'exp_down',    label: '☀ −',        x: 24,  y: 168, w: 88,  h: 40 },
-  { id: 'exp_up',      label: '☀ +',        x: 128, y: 168, w: 88,  h: 40 },
-  { id: 'scale_down',  label: '⊖ Scale',    x: 24,  y: 226, w: 136, h: 40 },
-  { id: 'scale_up',    label: '⊕ Scale',    x: 178, y: 226, w: 136, h: 40 },
-  { id: 'rot_x_neg',   label: 'X −90°',     x: 24,  y: 284, w: 110, h: 38 },
-  { id: 'rot_x_pos',   label: 'X +90°',     x: 142, y: 284, w: 110, h: 38 },
-  { id: 'rot_y_neg',   label: 'Y −90°',     x: 260, y: 284, w: 110, h: 38 },
-  { id: 'rot_y_pos',   label: 'Y +90°',     x: 378, y: 284, w: 110, h: 38 },
-  { id: 'gfx_low',     label: 'Low',        x: 24,  y: 360, w: 110, h: 40 },
-  { id: 'gfx_med',     label: 'Med',        x: 150, y: 360, w: 110, h: 40 },
-  { id: 'gfx_high',    label: 'High',       x: 276, y: 360, w: 110, h: 40 },
-  { id: 'close_panel', label: '✕  Close',   x: 332, y: 458, w: 156, h: 42 },
-];
+const PAD    = 20;
+const GAP    = 10;
+const BTN_H  = 42;
+
+/**
+ * Build button rects + section y positions from current viewer state.
+ * Animation row is omitted when the model has no clips so the panel
+ * doesn't leave a dead gap under the title.
+ */
+function _buildLayout(vs) {
+  const innerW = TEX_W - PAD * 2;
+  const col3 = (innerW - GAP * 2) / 3;
+  const col4 = (innerW - GAP * 3) / 4;
+  const buttons = [];
+  let y = 78; // below title + hint
+
+  const sections = {};
+
+  if (vs.hasAnimation) {
+    sections.animLabelY = y;
+    y += 16;
+    const rowY = y;
+    buttons.push(
+      { id: 'play',   label: '▶  Play',   x: PAD,                 y: rowY, w: col3, h: BTN_H },
+      { id: 'pause',  label: '⏸  Pause',  x: PAD + col3 + GAP,    y: rowY, w: col3, h: BTN_H },
+      { id: 'rewind', label: '⏮  Rewind', x: PAD + (col3 + GAP)*2,y: rowY, w: col3, h: BTN_H },
+    );
+    y += BTN_H + 14;
+  }
+
+  // Exposure: [−] [======== value ========] [+]
+  sections.expLabelY = y;
+  y += 16;
+  const expBtnW = 72;
+  const expBarX = PAD + expBtnW + GAP;
+  const expBarW = innerW - expBtnW * 2 - GAP * 2;
+  sections.expBar = { x: expBarX, y, w: expBarW, h: BTN_H };
+  buttons.push(
+    { id: 'exp_down', label: '☀ −', x: PAD, y, w: expBtnW, h: BTN_H },
+    { id: 'exp_up',   label: '☀ +', x: PAD + innerW - expBtnW, y, w: expBtnW, h: BTN_H },
+  );
+  y += BTN_H + 14;
+
+  // Scale: [⊖] [======== value ========] [⊕]
+  sections.scaleLabelY = y;
+  y += 16;
+  const scBtnW = 100;
+  const scBarX = PAD + scBtnW + GAP;
+  const scBarW = innerW - scBtnW * 2 - GAP * 2;
+  sections.scaleBar = { x: scBarX, y, w: scBarW, h: BTN_H };
+  buttons.push(
+    { id: 'scale_down', label: '⊖ Scale', x: PAD, y, w: scBtnW, h: BTN_H },
+    { id: 'scale_up',   label: '⊕ Scale', x: PAD + innerW - scBtnW, y, w: scBtnW, h: BTN_H },
+  );
+  y += BTN_H + 14;
+
+  // Rotation 4-across
+  sections.rotLabelY = y;
+  y += 16;
+  const rotY = y;
+  buttons.push(
+    { id: 'rot_x_neg', label: 'X −90°', x: PAD,                  y: rotY, w: col4, h: BTN_H },
+    { id: 'rot_x_pos', label: 'X +90°', x: PAD + col4 + GAP,     y: rotY, w: col4, h: BTN_H },
+    { id: 'rot_y_neg', label: 'Y −90°', x: PAD + (col4 + GAP)*2, y: rotY, w: col4, h: BTN_H },
+    { id: 'rot_y_pos', label: 'Y +90°', x: PAD + (col4 + GAP)*3, y: rotY, w: col4, h: BTN_H },
+  );
+  y += BTN_H + 14;
+
+  // Graphics 3-across
+  sections.gfxLabelY = y;
+  y += 16;
+  const gfxY = y;
+  buttons.push(
+    { id: 'gfx_low',  label: 'Low',  x: PAD,                  y: gfxY, w: col3, h: BTN_H },
+    { id: 'gfx_med',  label: 'Med',  x: PAD + col3 + GAP,     y: gfxY, w: col3, h: BTN_H },
+    { id: 'gfx_high', label: 'High', x: PAD + (col3 + GAP)*2, y: gfxY, w: col3, h: BTN_H },
+  );
+  y += BTN_H + 16;
+
+  // Bottom row: hide panel | exit immersive
+  const half = (innerW - GAP) / 2;
+  buttons.push(
+    { id: 'close_panel', label: 'Hide panel', x: PAD, y, w: half, h: BTN_H },
+    { id: 'exit_vr',     label: 'Exit VR', x: PAD + half + GAP, y, w: half, h: BTN_H, danger: true },
+  );
+  y += BTN_H + 22;
+  sections.footerY = Math.min(TEX_H - 16, y);
+
+  return { buttons, sections };
+}
 
 // ─────────────────────────────────────────────────────────────────
 // Module state
@@ -182,7 +256,7 @@ export function initVR(opts) {
   // ── Panel ─────────────────────────────────────────────────────
   const panelState = {
     visible: false, mesh: null, canvas: null, ctx: null,
-    texture: null, dirty: true, hoverId: null,
+    texture: null, dirty: true, hoverId: null, buttons: [],
   };
   _buildPanel(panelState);
   scene.add(panelState.mesh);
@@ -197,6 +271,12 @@ export function initVR(opts) {
     nudgeRotation: nudgeRotation || (() => {}),
     setGraphicsQuality: setGraphicsQuality || (() => {}),
     showPanel,
+    exitVR: () => {
+      const session = renderer.xr.getSession?.();
+      if (session) {
+        session.end().catch(() => {});
+      }
+    },
     heightUp:   () => _adjustHeight(player,  _heightStep(), heightOffset, v => { heightOffset = v; }),
     heightDown: () => _adjustHeight(player, -_heightStep(), heightOffset, v => { heightOffset = v; }),
   };
@@ -292,87 +372,99 @@ function _buildPanel(state) {
 
 function _repaintPanel(state, vs) {
   const { ctx, texture, hoverId } = state;
-  const W = TEX_W, H = TEX_H;
+  const W = TEX_W;
+  const layout = _buildLayout(vs);
+  state.buttons = layout.buttons;
+  const { sections } = layout;
 
-  ctx.clearRect(0, 0, W, H);
-  _rrect(ctx, 0, 0, W, H, 24, 'rgba(15,17,30,0.94)');
-  _rrect(ctx, 1, 1, W-2, H-2, 23, null, 'rgba(80,70,180,0.5)', 1.5);
+  ctx.clearRect(0, 0, W, TEX_H);
+  _rrect(ctx, 0, 0, W, TEX_H, 22, 'rgba(15,17,30,0.94)');
+  _rrect(ctx, 1, 1, W - 2, TEX_H - 2, 21, null, 'rgba(80,70,180,0.45)', 1.5);
 
   // Title
-  ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 22px system-ui,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('ModelSpace Controls', W / 2, 44);
+  ctx.fillStyle = '#e8eaf0';
+  ctx.font = 'bold 20px system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('ModelSpace', W / 2, 36);
 
-  // Hint bar
-  ctx.fillStyle = 'rgba(124,130,160,0.55)'; ctx.font = '11px system-ui,sans-serif';
-  ctx.fillText('X: panel  Y: anim  A/B: height  R-stick: turn + zoom', W / 2, 66);
+  // Hint
+  ctx.fillStyle = 'rgba(124,130,160,0.7)';
+  ctx.font = '11px system-ui,sans-serif';
+  ctx.fillText('X menu · Y anim · A/B height · stick move/turn', W / 2, 56);
 
-  // Animation section
+  const gq = vs.graphicsQuality || 'medium';
+  const rot = vs.rotation || { x: 0, y: 0, z: 0 };
+
+  // Section labels
+  ctx.textAlign = 'left';
+  ctx.font = '11px system-ui,sans-serif';
+  ctx.fillStyle = '#7c82a0';
+
   if (vs.hasAnimation) {
-    ctx.fillStyle = 'rgba(108,99,255,0.1)'; ctx.fillRect(14, 84, W - 28, 14 + 40 + 8);
-    ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('ANIMATION', 24, 98);
+    ctx.fillText('ANIMATION', PAD, sections.animLabelY);
   }
 
-  // Exposure section
-  ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('EXPOSURE', 24, 158);
-  const expFrac = Math.min(vs.exposure / 4, 1);
-  const eX = 236, eY = 168, eW = 260, eH = 40;
-  _rrect(ctx, eX, eY, eW, eH, 8, 'rgba(46,50,72,0.8)');
-  if (expFrac > 0) _rrect(ctx, eX+2, eY+2, (eW-4)*expFrac, eH-4, 6, '#6c63ff');
-  ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 15px system-ui,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(vs.exposure.toFixed(2), eX + eW/2, eY + 26);
+  ctx.fillText('EXPOSURE', PAD, sections.expLabelY);
+  ctx.fillText('SCALE', PAD, sections.scaleLabelY);
+  ctx.fillText(
+    `ROTATION  ${Math.round(rot.x || 0)}° / ${Math.round(rot.y || 0)}° / ${Math.round(rot.z || 0)}°`,
+    PAD,
+    sections.rotLabelY,
+  );
+  const gfxHint = gq === 'low' ? 'smoother' : gq === 'high' ? 'sharper' : 'balanced';
+  ctx.fillText(`GRAPHICS  ·  ${gfxHint}`, PAD, sections.gfxLabelY);
 
-  // Scale section
-  ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('SCALE', 24, 216);
-  const sX = 236, sY = 226, sW = 260, sH = 40;
-  _rrect(ctx, sX, sY, sW, sH, 8, 'rgba(46,50,72,0.8)');
+  // Value bars (exposure / scale)
+  const expFrac = Math.min(Math.max(Number(vs.exposure) / 4, 0), 1);
+  const eb = sections.expBar;
+  _rrect(ctx, eb.x, eb.y, eb.w, eb.h, 10, 'rgba(46,50,72,0.9)');
+  if (expFrac > 0) {
+    _rrect(ctx, eb.x + 3, eb.y + 3, Math.max(0, (eb.w - 6) * expFrac), eb.h - 6, 8, '#6c63ff');
+  }
+  ctx.fillStyle = '#e8eaf0';
+  ctx.font = 'bold 14px system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(Number(vs.exposure).toFixed(2), eb.x + eb.w / 2, eb.y + eb.h / 2 + 5);
+
+  const sb = sections.scaleBar;
+  _rrect(ctx, sb.x, sb.y, sb.w, sb.h, 10, 'rgba(46,50,72,0.9)');
   if (vs.modelScale > 1) {
     const sFrac = Math.min(Math.log10(vs.modelScale) / Math.log10(500), 1);
-    _rrect(ctx, sX+2, sY+2, (sW-4)*sFrac, sH-4, 6, '#4caf81');
+    _rrect(ctx, sb.x + 3, sb.y + 3, Math.max(0, (sb.w - 6) * sFrac), sb.h - 6, 8, '#4caf81');
   }
   const sLabel = vs.modelScale
     ? (vs.modelScale < 0.1 ? vs.modelScale.toFixed(3) : vs.modelScale.toFixed(2)) + '×'
     : '—';
-  ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 15px system-ui,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(sLabel, sX + sW/2, sY + 26);
-
-  // Rotation section
-  ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('ROTATION (saved)', 24, 274);
-  const rot = vs.rotation || { x: 0, y: 0, z: 0 };
-  ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 14px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(`${Math.round(rot.x||0)}° / ${Math.round(rot.y||0)}° / ${Math.round(rot.z||0)}°`, 236, 274);
-
-  // Graphics section
-  ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('GRAPHICS (VR PERFORMANCE)', 24, 348);
-  const gq = vs.graphicsQuality || 'medium';
-  ctx.fillStyle = '#e8eaf0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(gq === 'low' ? 'smoother' : gq === 'high' ? 'sharper' : 'balanced', 400, 348);
+  ctx.fillStyle = '#e8eaf0';
+  ctx.font = 'bold 14px system-ui,sans-serif';
+  ctx.fillText(sLabel, sb.x + sb.w / 2, sb.y + sb.h / 2 + 5);
 
   // Buttons
-  for (const btn of PANEL_BUTTONS) {
-    if (!vs.hasAnimation && ['play', 'pause', 'rewind'].includes(btn.id)) continue;
+  for (const btn of layout.buttons) {
     const hov = btn.id === hoverId;
     const gfxActive =
       (btn.id === 'gfx_low'  && gq === 'low') ||
       (btn.id === 'gfx_med'  && gq === 'medium') ||
       (btn.id === 'gfx_high' && gq === 'high');
-    _rrect(ctx, btn.x, btn.y, btn.w, btn.h, 10,
-      hov || gfxActive ? '#6c63ff' : 'rgba(36,39,54,0.9)',
-      hov || gfxActive ? '#9088ff' : 'rgba(80,84,120,0.6)', 1.5
-    );
+    const active = hov || gfxActive;
+    let fill = active ? '#6c63ff' : 'rgba(36,39,54,0.95)';
+    let stroke = active ? '#9088ff' : 'rgba(80,84,120,0.55)';
+    if (btn.danger) {
+      fill = hov ? '#c44a4a' : 'rgba(120,36,36,0.95)';
+      stroke = hov ? '#ff8888' : 'rgba(180,80,80,0.65)';
+    }
+    _rrect(ctx, btn.x, btn.y, btn.w, btn.h, 10, fill, stroke, 1.5);
     ctx.fillStyle = '#e8eaf0';
-    ctx.font = `${hov || gfxActive ? 'bold ' : ''}14px system-ui,sans-serif`;
+    ctx.font = `${active || (btn.danger && hov) ? 'bold ' : ''}13px system-ui,sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(btn.label, btn.x + btn.w/2, btn.y + btn.h/2 + 5);
+    ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 5);
   }
 
-  // Status footer
-  ctx.fillStyle = 'rgba(124,130,160,0.65)'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(vs.isPlaying ? '▶  Playing' : '⏸  Paused', W/2, H - 10);
+  // Footer
+  ctx.fillStyle = 'rgba(124,130,160,0.7)';
+  ctx.font = '12px system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(vs.isPlaying ? '▶  Playing' : '⏸  Paused', W / 2, sections.footerY);
 
   texture.needsUpdate = true;
   state.dirty = false;
@@ -536,7 +628,8 @@ function _updateRaycasting(controllers, panelState) {
 
       const prev = panelState.hoverId;
       panelState.hoverId = null;
-      for (const btn of PANEL_BUTTONS) {
+      const btns = panelState.buttons || [];
+      for (const btn of btns) {
         if (px >= btn.x && px <= btn.x + btn.w && py >= btn.y && py <= btn.y + btn.h) {
           panelState.hoverId = btn.id;
           break;
@@ -589,6 +682,7 @@ function _firePanelClick(ctrl, panelState, actions) {
     case 'gfx_med':     actions.setGraphicsQuality('medium');                   break;
     case 'gfx_high':    actions.setGraphicsQuality('high');                     break;
     case 'close_panel': actions.showPanel(false);                               break;
+    case 'exit_vr':     actions.exitVR();                                       break;
   }
   panelState.dirty = true;
   _haptic(ctrl);
