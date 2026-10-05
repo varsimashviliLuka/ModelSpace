@@ -3,53 +3,29 @@
  * Target: Meta Quest 3 (immersive-vr, 6DOF, dual controllers).
  *
  * ═══════════════════════════════════════════════════════════════
- * LOCOMOTION BUG — ROOT CAUSE & FIX
+ * LOCOMOTION
  * ═══════════════════════════════════════════════════════════════
  *
- * PROBLEM:
- *   The animation loop in view.html runs:
- *       controls.update()   ← OrbitControls re-orients camera to look at target (0,Y,0)
- *       vrAPI.update()      ← locomotion reads camera.getWorldDirection() ← WRONG
- *       renderer.render()   ← XR system finally sets the real head pose
+ * Walk (left stick) is HEAD-relative on the horizontal plane:
+ *   forward = where the headset is looking (flattened to XZ)
+ *   strafe  = right vector from that yaw
  *
- *   OrbitControls.update() sets camera.matrixWorld so the camera looks at
- *   controls.target, which is near world origin (the model center).
- *   By the time camera.getWorldDirection() is called, "forward" always points
- *   toward the model center — regardless of which way the user's head is facing.
- *   This is the "center attraction": every stick direction moves toward (0,0,0).
+ * Snap/smooth turn still rotates the player rig (reference space).
+ * OrbitControls must stay disabled while presenting so head pose
+ * is not overwritten before we read it (see view.html render loop).
  *
- * FIX 1 — guard controls.update() in view.html:
- *   if (!renderer.xr.isPresenting) controls.update();
- *
- * FIX 2 — derive forward/right from player.rotation.y (pure math, no camera dependency):
- *   const yaw     = player.rotation.y;
- *   const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
- *   const right   = new THREE.Vector3( Math.cos(yaw), 0, -Math.sin(yaw));
- *
- *   player.rotation.y is set only by our snap/smooth turn code — it is never
- *   touched by OrbitControls or the XR runtime. Always correct. No timing issues.
- *
- * ═══════════════════════════════════════════════════════════════
  * CONTROL SCHEME
- * ═══════════════════════════════════════════════════════════════
- *   Left stick X/Y  = free walk (forward/back/strafe relative to player yaw)
- *   Right stick X   = snap turn (or smooth turn if VR_SMOOTH_TURN=1)
- *   Right stick Y   = dolly zoom (scales radial distance from model origin)
+ *   Left stick X/Y  = walk relative to head look
+ *   Right stick X   = snap turn (or smooth if VR_SMOOTH_TURN=1)
+ *   Right stick Y   = dolly zoom (radial distance from model origin)
  *   Trigger         = click VR panel button
- *   Left X button   = toggle VR panel
- *   Left Y button   = toggle animation play/pause
- *   Right A button  = lower height
- *   Right B button  = raise height
+ *   Left X          = toggle VR panel
+ *   Left Y          = play/pause animation
+ *   Right A / B     = lower / raise height
  *
  * AXIS MAP (Quest 3 WebXR gamepad):
- *   axes[0..1] = touchpad/joystick (unused on Quest 3)
- *   axes[2]    = thumbstick X  (-1=left, +1=right)
- *   axes[3]    = thumbstick Y  (-1=forward/up push, +1=backward/down push)
- *
- * BUTTON MAP (Quest 3):
- *   [0]=trigger  [1]=grip  [3]=stick-click
- *   Left:  [4]=X  [5]=Y
- *   Right: [4]=A  [5]=B
+ *   axes[2] = thumbstick X  (-1=left, +1=right)
+ *   axes[3] = thumbstick Y  (-1=forward push, +1=back)
  * ═══════════════════════════════════════════════════════════════
  */
 
@@ -318,8 +294,16 @@ export function initVR(opts) {
 
     _pollFaceButtons(controllers, actions);
 
+    // Snap/turn first, then walk — so left stick uses the updated yaw this frame
     for (const ctrl of controllers) {
-      if (ctrl.gamepad) _handleLocomotion(ctrl, player, delta);
+      if (ctrl.gamepad && ctrl.hand === 'right') {
+        _handleLocomotion(ctrl, player, camera, renderer, delta);
+      }
+    }
+    for (const ctrl of controllers) {
+      if (ctrl.gamepad && ctrl.hand === 'left') {
+        _handleLocomotion(ctrl, player, camera, renderer, delta);
+      }
     }
 
     _updateRaycasting(controllers, panelState);
@@ -497,92 +481,100 @@ function _pollFaceButtons(controllers, actions) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Locomotion — THE FIXED VERSION
+// Locomotion — head-relative walk + snap turn (Quest-style)
 //
-// Forward/right derived from player.rotation.y ONLY.
-// No camera.matrixWorld dependency → no center attraction.
+// IMPORTANT (Three.js WebXR):
+//   renderer.xr.getCamera() (cameraXR) has parent=null. Its matrix is the
+//   headset pose in the XR reference space. During render(), Three.js does
+//   matrixWorld = player.matrixWorld * xr.matrix so SNAP on `player` turns
+//   the view — but getWorldDirection(cameraXR) ignores `player` entirely.
 //
-// Axis conventions (Quest 3):
-//   axes[2]: thumbstick X  -1=left   +1=right
-//   axes[3]: thumbstick Y  -1=forward(up push)  +1=backward(down push)
-//
-// Left stick  → free walk
-// Right stick X → snap/smooth turn
-// Right stick Y → dolly zoom (radial distance from XZ origin)
+//   Walk must apply player.quaternion (snap/smooth turn) on top of the
+//   headset forward, or stick directions feel rotated after every snap.
 // ─────────────────────────────────────────────────────────────────
 
-function _handleLocomotion(ctrl, player, delta) {
+const _headForward = new THREE.Vector3();
+const _headRight   = new THREE.Vector3();
+const _worldUp     = new THREE.Vector3(0, 1, 0);
+
+function _getWalkAxes(renderer, camera, player) {
+  const xrCam = renderer.xr.getCamera?.() || camera;
+
+  // Headset look in XR reference space (rotation only)
+  _headForward.set(0, 0, -1).transformDirection(xrCam.matrix);
+  _headForward.y = 0;
+  if (_headForward.lengthSq() < 1e-8) {
+    _headForward.set(0, 0, -1);
+  } else {
+    _headForward.normalize();
+  }
+
+  // Apply rig / snap-turn yaw (player is the dolly)
+  player.updateMatrixWorld(true);
+  _headForward.applyQuaternion(player.quaternion);
+  _headForward.y = 0;
+  if (_headForward.lengthSq() < 1e-8) {
+    const yaw = player.rotation.y;
+    _headForward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+  } else {
+    _headForward.normalize();
+  }
+
+  // right-handed Y-up: right = forward × up
+  _headRight.crossVectors(_headForward, _worldUp).normalize();
+  return { forward: _headForward, right: _headRight };
+}
+
+function _handleLocomotion(ctrl, player, camera, renderer, delta) {
   const axes = ctrl.gamepad?.axes;
   if (!axes || axes.length < 4) return;
 
   const dz = _deadzone();
+  const frameScale = Math.min(Math.max(delta * 72, 0.25), 2.5);
 
   if (ctrl.hand === 'left') {
-    const lx = axes[2]; // strafe:  +1 = right
-    const ly = axes[3]; // forward: -1 = forward push (negate when moving)
+    const lx = axes[2]; // -1 left, +1 right
+    const ly = axes[3]; // -1 forward push, +1 back
 
     if (Math.abs(lx) <= dz && Math.abs(ly) <= dz) return;
 
-    // ── THE FIX: derive from player.rotation.y, not from camera ──
-    // player.rotation.y is only changed by our snap/smooth turn code.
-    // It is never touched by OrbitControls or the XR runtime.
-    // This makes locomotion immune to camera.matrixWorld timing issues.
-    const yaw = player.rotation.y;
-    // Camera default looks in -Z. Rotated by yaw:
-    // forward = R_y(yaw) * (0,0,-1) = (-sin yaw, 0, -cos yaw)
-    const fX = -Math.sin(yaw);
-    const fZ = -Math.cos(yaw);
-    // right = cross(forward, up) = (-sin,0,-cos) × (0,1,0) = (cos, 0, -sin)
-    const rX =  Math.cos(yaw);
-    const rZ = -Math.sin(yaw);
-
-    const spd = _moveSpeed();
-    // ly: -1 = forward push → negate to get positive forward movement
-    player.position.x += (fX * (-ly) + rX * lx) * spd;
-    player.position.z += (fZ * (-ly) + rZ * lx) * spd;
+    const { forward, right } = _getWalkAxes(renderer, camera, player);
+    const spd = _moveSpeed() * frameScale;
+    player.position.x += (forward.x * (-ly) + right.x * lx) * spd;
+    player.position.z += (forward.z * (-ly) + right.z * lx) * spd;
 
   } else {
-    // ── Right stick: X = turn, Y = dolly zoom ────────────────────
-    const rx = axes[2]; // turn: +1 = right
-    const ry = axes[3]; // zoom: -1 = push up = zoom in (move closer)
+    const rx = axes[2];
+    const ry = axes[3];
 
-    // Turn (snap or smooth, configurable)
     if (Math.abs(rx) > dz) {
       if (_smoothTurn()) {
-        // Smooth: rotate continuously at turnSpeed rad/s
         player.rotation.y -= rx * _turnSpeed() * delta;
-      } else {
-        // Snap: single jump when stick crosses threshold, cooldown until released
-        if (Math.abs(rx) > 0.7 && _snapCooled) {
-          player.rotation.y += (rx > 0 ? -1 : 1) * _snapAngle();
-          _snapCooled = false;
-        } else if (Math.abs(rx) < 0.3) {
-          _snapCooled = true;
-        }
+      } else if (Math.abs(rx) > 0.7 && _snapCooled) {
+        player.rotation.y -= Math.sign(rx) * _snapAngle();
+        _snapCooled = false;
+      } else if (Math.abs(rx) < 0.3) {
+        _snapCooled = true;
       }
-    } else {
-      if (!_smoothTurn()) _snapCooled = true; // reset snap when stick centered
+    } else if (!_smoothTurn()) {
+      _snapCooled = true;
     }
 
-    // Dolly zoom: scale the player's XZ distance from model origin.
-    // ry = -1 (push up) → zoom in → reduce distance (closer to model)
-    // ry = +1 (push down) → zoom out → increase distance
     if (Math.abs(ry) > dz) {
       const pX = player.position.x;
       const pZ = player.position.z;
       const dist = Math.sqrt(pX * pX + pZ * pZ);
-
-      const newDist = Math.max(_zoomMin(), Math.min(_zoomMax(), dist + ry * _zoomSpeed()));
+      const zoomStep = ry * _zoomSpeed() * frameScale;
+      const newDist = Math.max(_zoomMin(), Math.min(_zoomMax(), dist + zoomStep));
 
       if (dist > 0.001) {
         const scale = newDist / dist;
         player.position.x = pX * scale;
         player.position.z = pZ * scale;
       } else {
-        // If already at center, move backward in player-facing direction on zoom out
-        const yaw = player.rotation.y;
-        player.position.x -= Math.sin(yaw) * ry * _zoomSpeed();
-        player.position.z -= Math.cos(yaw) * ry * _zoomSpeed();
+        const { forward } = _getWalkAxes(renderer, camera, player);
+        player.position.x -= forward.x * zoomStep;
+        player.position.z -= forward.z * zoomStep;
       }
     }
   }
