@@ -64,6 +64,20 @@
   <!-- ── Side panel ──────────────────────────────────────────── -->
   <aside id="side-panel" class="side-panel">
 
+    <!-- Graphics quality (VR performance) -->
+    <section class="panel-section">
+      <div class="panel-label">
+        ◈ Graphics
+        <span class="panel-hint">VR performance</span>
+      </div>
+      <div class="scale-btns" id="gfx-quality-btns" role="group" aria-label="Graphics quality">
+        <button type="button" class="scale-preset-btn gfx-preset-btn" data-gfx="low" title="Best performance">Low</button>
+        <button type="button" class="scale-preset-btn gfx-preset-btn" data-gfx="medium" title="Balanced">Med</button>
+        <button type="button" class="scale-preset-btn gfx-preset-btn" data-gfx="high" title="Best quality">High</button>
+      </div>
+      <p class="panel-footnote">Lower = smoother on Quest when viewing the whole model from afar.</p>
+    </section>
+
     <!-- Exposure -->
     <section class="panel-section">
       <div class="panel-label">☀ Exposure</div>
@@ -194,7 +208,8 @@
         <strong>Right stick</strong> = snap turn<br>
         <strong>X</strong> = menu &nbsp;·&nbsp; <strong>Y</strong> = play/pause<br>
         <strong>A</strong> = lower &nbsp;·&nbsp; <strong>B</strong> = raise<br>
-        <strong>Scale ⊖/⊕</strong> &amp; <strong>X/Y ±90°</strong> in VR panel
+        <strong>Scale ⊖/⊕</strong> &amp; <strong>X/Y ±90°</strong> in VR panel<br>
+        <strong>Graphics Low/Med/High</strong> in VR panel for performance
       </p>
     </section>
 
@@ -313,6 +328,179 @@
     renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
     renderer.xr.enabled          = true;
 
+    // ── Graphics quality (VR performance presets) ──────────────
+    const GFX_STORAGE_KEY = 'modelspace.graphicsQuality';
+    const GFX_PRESETS = {
+      low: {
+        label: 'Low',
+        framebufferScale: 0.55,
+        foveation: 1.0,
+        shadows: false,
+        pixelRatioCap: 1,
+        // Switch to cheaper materials sooner when far from the model
+        cheapDistanceMul: 1.4,
+        anisotropy: 1,
+      },
+      medium: {
+        label: 'Med',
+        framebufferScale: 0.72,
+        foveation: 0.85,
+        shadows: false,
+        pixelRatioCap: 1.25,
+        cheapDistanceMul: 2.8,
+        anisotropy: 2,
+      },
+      high: {
+        label: 'High',
+        framebufferScale: 0.9,
+        foveation: 0.45,
+        shadows: true,
+        pixelRatioCap: 1.5,
+        cheapDistanceMul: 6.0,
+        anisotropy: 4,
+      },
+    };
+    const GFX_LEVELS = ['low', 'medium', 'high'];
+
+    function readStoredGraphicsQuality() {
+      try {
+        const local = localStorage.getItem(GFX_STORAGE_KEY);
+        if (GFX_LEVELS.includes(local)) return local;
+      } catch (_) {}
+      if (GFX_LEVELS.includes(SAVED?.graphics_quality)) return SAVED.graphics_quality;
+      return 'medium';
+    }
+
+    let graphicsQuality = readStoredGraphicsQuality();
+    let modelRadius = 2;
+    let modelCenter = new THREE.Vector3();
+    let usingCheapMats = false;
+    const meshMatCache = new WeakMap(); // mesh -> { full, cheap }
+    let desktopPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    // Declared early — applyGraphicsQuality / distance helpers touch these
+    let modelRoot = null;
+    let vrAPI = null;
+
+    function getGfxPreset() {
+      return GFX_PRESETS[graphicsQuality] || GFX_PRESETS.medium;
+    }
+
+    function makeCheapMaterial(mat) {
+      if (!mat) return new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
+      const cheap = new THREE.MeshLambertMaterial({
+        color: mat.color ? mat.color.clone() : new THREE.Color(0xaaaaaa),
+        map: mat.map || null,
+        transparent: !!mat.transparent,
+        opacity: mat.opacity ?? 1,
+        side: mat.side ?? THREE.FrontSide,
+        alphaTest: mat.alphaTest || 0,
+        name: mat.name || '',
+      });
+      if (mat.map) cheap.map.colorSpace = mat.map.colorSpace;
+      return cheap;
+    }
+
+    function ensureMeshMatCache(mesh) {
+      if (meshMatCache.has(mesh)) return meshMatCache.get(mesh);
+      const full = mesh.material;
+      const fullList = Array.isArray(full) ? full : [full];
+      const cheapList = fullList.map(makeCheapMaterial);
+      const entry = {
+        full,
+        cheap: Array.isArray(full) ? cheapList : cheapList[0],
+      };
+      meshMatCache.set(mesh, entry);
+      return entry;
+    }
+
+    function setMaterialsCheap(cheap) {
+      if (!modelRoot || usingCheapMats === cheap) return;
+      usingCheapMats = cheap;
+      modelRoot.traverse((obj) => {
+        if (!obj.isMesh || !obj.material) return;
+        const entry = ensureMeshMatCache(obj);
+        obj.material = cheap ? entry.cheap : entry.full;
+      });
+    }
+
+    function applyTextureAnisotropy(root, aniso) {
+      if (!root) return;
+      const maxAniso = renderer.capabilities.getMaxAnisotropy?.() || 1;
+      const value = Math.min(aniso, maxAniso);
+      root.traverse((obj) => {
+        if (!obj.isMesh || !obj.material) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) {
+          if (!mat) continue;
+          for (const key of Object.keys(mat)) {
+            const val = mat[key];
+            if (val && val.isTexture) {
+              val.anisotropy = value;
+              val.needsUpdate = true;
+            }
+          }
+        }
+      });
+    }
+
+    function applyGraphicsQuality(level, { persist = true, fromUser = false } = {}) {
+      if (!GFX_LEVELS.includes(level)) level = 'medium';
+      graphicsQuality = level;
+      const preset = getGfxPreset();
+
+      // XR resolution + foveation (Quest)
+      try { renderer.xr.setFramebufferScaleFactor(preset.framebufferScale); } catch (_) {}
+      try { renderer.xr.setFoveation(preset.foveation); } catch (_) {}
+
+      // Shadows — expensive in stereo VR
+      renderer.shadowMap.enabled = preset.shadows;
+      if (dirLight) dirLight.castShadow = preset.shadows;
+
+      // Desktop pixel ratio cap (XR uses framebuffer scale instead)
+      if (!renderer.xr.isPresenting) {
+        renderer.setPixelRatio(Math.min(desktopPixelRatio, preset.pixelRatioCap));
+      }
+
+      applyTextureAnisotropy(modelRoot, preset.anisotropy);
+      updateGfxUI();
+      // Force distance quality re-eval next frame
+      usingCheapMats = null;
+      updateDistanceQuality(true);
+
+      if (fromUser && vrAPI?._panelState) vrAPI._panelState.dirty = true;
+      if (persist) {
+        try { localStorage.setItem(GFX_STORAGE_KEY, graphicsQuality); } catch (_) {}
+        scheduleSaveSettings();
+      }
+    }
+
+    function updateGfxUI() {
+      document.querySelectorAll('.gfx-preset-btn').forEach((btn) => {
+        btn.classList.toggle('scale-preset-btn--active', btn.dataset.gfx === graphicsQuality);
+      });
+    }
+
+    function updateDistanceQuality(force = false) {
+      if (!modelRoot) return;
+      // Only downgrade materials in immersive VR — desktop keeps full quality
+      if (!renderer.xr.isPresenting) {
+        setMaterialsCheap(false);
+        return;
+      }
+      const preset = getGfxPreset();
+      const camPos = new THREE.Vector3();
+      try {
+        renderer.xr.getCamera().getWorldPosition(camPos);
+      } catch (_) {
+        camera.getWorldPosition(camPos);
+      }
+      const dist = camPos.distanceTo(modelCenter);
+      const threshold = Math.max(1.2, modelRadius * preset.cheapDistanceMul);
+      const wantCheap = dist > threshold;
+      if (force) usingCheapMats = null;
+      setMaterialsCheap(wantCheap);
+    }
+
     // Cap texture size uploaded to GPU (safety net; server also downscales).
     const MAX_TEX_EDGE = Math.max(
       256,
@@ -353,6 +541,9 @@
       });
     }
 
+    // dirLight is set after scene setup; keep a mutable ref for graphics presets
+    let dirLight = null;
+
     // ── Scene ──────────────────────────────────────────────────
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0f1117);
@@ -361,11 +552,14 @@
     camera.position.set(0, 1, 3);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
     dirLight.position.set(5, 10, 7);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.set(2048, 2048);
     scene.add(dirLight);
+
+    // Apply saved / default graphics preset once lights exist
+    applyGraphicsQuality(graphicsQuality, { persist: false });
 
     // Procedural environment
     (function() {
@@ -415,7 +609,6 @@
     const POS_SNAP = 0.5;
     const SCALE_MIN = 0.01;
     const SCALE_MAX = 500;
-    let modelRoot = null;
     let fitScale = 1.0;           // auto-fit baseline
     let scaleMultiplier = 1.0;    // user-facing scale (1 = fitted)
     let currentRotation = {
@@ -472,7 +665,7 @@
       const logVal = Math.log10(clamp(m, SCALE_MIN, SCALE_MAX));
       scaleSlider.value = logVal;
       scaleInput.value = m >= 10 ? m.toFixed(1) : (m < 0.1 ? m.toFixed(3) : m.toFixed(2));
-      document.querySelectorAll('.scale-preset-btn').forEach(b => {
+      document.querySelectorAll('.scale-preset-btn[data-scale]').forEach(b => {
         b.classList.toggle(
           'scale-preset-btn--active',
           Math.abs(parseFloat(b.dataset.scale) - m) < 0.001
@@ -502,6 +695,12 @@
       modelRoot.position.x += currentPosition.x;
       modelRoot.position.y += currentPosition.y;
       modelRoot.position.z += currentPosition.z;
+
+      const box2 = new THREE.Box3().setFromObject(modelRoot);
+      const sph = new THREE.Sphere();
+      box2.getBoundingSphere(sph);
+      modelRadius = Math.max(0.5, sph.radius);
+      modelCenter.copy(sph.center);
     }
 
     function setModelRotation(next, { persist = true, snap = false } = {}) {
@@ -566,6 +765,7 @@
             scale: scaleMultiplier,
             scale_relative: true,
             exposure: renderer.toneMappingExposure,
+            graphics_quality: graphicsQuality,
           }),
         });
       } catch (_) { /* non-fatal */ }
@@ -587,6 +787,7 @@
         modelScale:  scaleMultiplier,
         rotation:    { ...currentRotation },
         position:    { ...currentPosition },
+        graphicsQuality,
       };
     }
 
@@ -631,11 +832,24 @@
     }
 
     // ── VR module ──────────────────────────────────────────────
-    const vrAPI = initVR({
+    vrAPI = initVR({
       renderer, scene, camera, controls,
       getViewerState, setExposure, playAnim, pauseAnim, rewindAnim, toggleAnim,
       scaleUp, scaleDown, setModelScale,
       nudgeRotation,
+      setGraphicsQuality: (level, opts = {}) => applyGraphicsQuality(
+        level || graphicsQuality,
+        { persist: opts.persist !== false, fromUser: opts.fromUser !== false },
+      ),
+    });
+
+    // Keep XR framebuffer / foveation in sync when entering VR
+    renderer.xr.addEventListener('sessionstart', () => {
+      applyGraphicsQuality(graphicsQuality, { persist: false });
+    });
+    renderer.xr.addEventListener('sessionend', () => {
+      setMaterialsCheap(false);
+      renderer.setPixelRatio(Math.min(desktopPixelRatio, getGfxPreset().pixelRatioCap));
     });
 
     // ── Render loop ────────────────────────────────────────────
@@ -651,6 +865,7 @@
       if (!renderer.xr.isPresenting) controls.update();
 
       vrAPI.update(dt);  // pass delta for smooth turn timing
+      updateDistanceQuality();
       renderer.render(scene, camera);
     });
 
@@ -769,6 +984,13 @@
       obj.position.y += currentPosition.y;
       obj.position.z += currentPosition.z;
 
+      // Track bounds for VR distance-based material downgrade
+      const fittedBox = new THREE.Box3().setFromObject(obj);
+      const sphere = new THREE.Sphere();
+      fittedBox.getBoundingSphere(sphere);
+      modelRadius = Math.max(0.5, sphere.radius);
+      modelCenter.copy(sphere.center);
+
       const sc = actualScale();
       const dist=2*2.2;
       camera.position.set(dist*.6, dist*.5, dist);
@@ -776,6 +998,9 @@
       controls.target.set(0, (box.max.y-box.min.y)*0.5, 0); controls.update();
       savedCamPos.copy(camera.position); savedCamTarget.copy(controls.target);
       const fp=Math.max(sz.x,sz.z)*sc*4; gridHelper.scale.set(fp/10,1,fp/10);
+
+      applyTextureAnisotropy(obj, getGfxPreset().anisotropy);
+      usingCheapMats = null;
 
       updateScaleUI();
       updateRotationUI();
@@ -974,8 +1199,13 @@
     scaleInput.addEventListener('change', () => setModelScale(parseFloat(scaleInput.value)));
     btnScaleReset?.addEventListener('click', () => setModelScale(1));
 
-    document.querySelectorAll('.scale-preset-btn').forEach(btn => {
+    document.querySelectorAll('.scale-preset-btn[data-scale]').forEach(btn => {
       btn.addEventListener('click', () => setModelScale(parseFloat(btn.dataset.scale)));
+    });
+    document.querySelectorAll('.gfx-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        applyGraphicsQuality(btn.dataset.gfx, { persist: true, fromUser: true });
+      });
     });
 
     for (const axis of ['x', 'y', 'z']) {

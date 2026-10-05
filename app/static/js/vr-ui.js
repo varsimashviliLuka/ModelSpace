@@ -88,26 +88,29 @@ const _heightUpBinding   = () => _binding('heightUp',    1, 5);
 // ─────────────────────────────────────────────────────────────────
 
 const PANEL_WIDTH    = 0.58;
-const PANEL_HEIGHT   = 0.54;
+const PANEL_HEIGHT   = 0.58;
 const PANEL_DISTANCE = 0.65;
 const PANEL_Y_OFFSET = 0.05;
 const TEX_W          = 512;
-const TEX_H          = 500;
+const TEX_H          = 520;
 const RAY_LENGTH     = 8;
 
 const PANEL_BUTTONS = [
-  { id: 'play',        label: '▶  Play',    x: 24,  y: 115, w: 136, h: 42 },
-  { id: 'pause',       label: '⏸  Pause',   x: 178, y: 115, w: 136, h: 42 },
-  { id: 'rewind',      label: '⏮  Rewind',  x: 332, y: 115, w: 156, h: 42 },
-  { id: 'exp_down',    label: '☀ −',        x: 24,  y: 175, w: 88,  h: 42 },
-  { id: 'exp_up',      label: '☀ +',        x: 128, y: 175, w: 88,  h: 42 },
-  { id: 'scale_down',  label: '⊖ Scale',    x: 24,  y: 235, w: 136, h: 42 },
-  { id: 'scale_up',    label: '⊕ Scale',    x: 178, y: 235, w: 136, h: 42 },
-  { id: 'rot_x_neg',   label: 'X −90°',     x: 24,  y: 295, w: 110, h: 40 },
-  { id: 'rot_x_pos',   label: 'X +90°',     x: 142, y: 295, w: 110, h: 40 },
-  { id: 'rot_y_neg',   label: 'Y −90°',     x: 260, y: 295, w: 110, h: 40 },
-  { id: 'rot_y_pos',   label: 'Y +90°',     x: 378, y: 295, w: 110, h: 40 },
-  { id: 'close_panel', label: '✕  Close',   x: 332, y: 438, w: 156, h: 42 },
+  { id: 'play',        label: '▶  Play',    x: 24,  y: 110, w: 136, h: 40 },
+  { id: 'pause',       label: '⏸  Pause',   x: 178, y: 110, w: 136, h: 40 },
+  { id: 'rewind',      label: '⏮  Rewind',  x: 332, y: 110, w: 156, h: 40 },
+  { id: 'exp_down',    label: '☀ −',        x: 24,  y: 168, w: 88,  h: 40 },
+  { id: 'exp_up',      label: '☀ +',        x: 128, y: 168, w: 88,  h: 40 },
+  { id: 'scale_down',  label: '⊖ Scale',    x: 24,  y: 226, w: 136, h: 40 },
+  { id: 'scale_up',    label: '⊕ Scale',    x: 178, y: 226, w: 136, h: 40 },
+  { id: 'rot_x_neg',   label: 'X −90°',     x: 24,  y: 284, w: 110, h: 38 },
+  { id: 'rot_x_pos',   label: 'X +90°',     x: 142, y: 284, w: 110, h: 38 },
+  { id: 'rot_y_neg',   label: 'Y −90°',     x: 260, y: 284, w: 110, h: 38 },
+  { id: 'rot_y_pos',   label: 'Y +90°',     x: 378, y: 284, w: 110, h: 38 },
+  { id: 'gfx_low',     label: 'Low',        x: 24,  y: 360, w: 110, h: 40 },
+  { id: 'gfx_med',     label: 'Med',        x: 150, y: 360, w: 110, h: 40 },
+  { id: 'gfx_high',    label: 'High',       x: 276, y: 360, w: 110, h: 40 },
+  { id: 'close_panel', label: '✕  Close',   x: 332, y: 458, w: 156, h: 42 },
 ];
 
 // ─────────────────────────────────────────────────────────────────
@@ -126,7 +129,7 @@ export function initVR(opts) {
   const {
     renderer, scene, camera, controls,
     getViewerState, setExposure, playAnim, pauseAnim, rewindAnim, toggleAnim,
-    scaleUp, scaleDown, setModelScale, nudgeRotation,
+    scaleUp, scaleDown, setModelScale, nudgeRotation, setGraphicsQuality,
   } = opts;
 
   // ── XR camera rig ─────────────────────────────────────────────
@@ -192,6 +195,7 @@ export function initVR(opts) {
     scaleDown:     scaleDown     || (() => {}),
     setModelScale: setModelScale || (() => {}),
     nudgeRotation: nudgeRotation || (() => {}),
+    setGraphicsQuality: setGraphicsQuality || (() => {}),
     showPanel,
     heightUp:   () => _adjustHeight(player,  _heightStep(), heightOffset, v => { heightOffset = v; }),
     heightDown: () => _adjustHeight(player, -_heightStep(), heightOffset, v => { heightOffset = v; }),
@@ -304,25 +308,25 @@ function _repaintPanel(state, vs) {
 
   // Animation section
   if (vs.hasAnimation) {
-    ctx.fillStyle = 'rgba(108,99,255,0.1)'; ctx.fillRect(14, 88, W - 28, 14 + 42 + 8);
+    ctx.fillStyle = 'rgba(108,99,255,0.1)'; ctx.fillRect(14, 84, W - 28, 14 + 40 + 8);
     ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('ANIMATION', 24, 104);
+    ctx.fillText('ANIMATION', 24, 98);
   }
 
   // Exposure section
   ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('EXPOSURE', 24, 165);
+  ctx.fillText('EXPOSURE', 24, 158);
   const expFrac = Math.min(vs.exposure / 4, 1);
-  const eX = 236, eY = 175, eW = 260, eH = 42;
+  const eX = 236, eY = 168, eW = 260, eH = 40;
   _rrect(ctx, eX, eY, eW, eH, 8, 'rgba(46,50,72,0.8)');
   if (expFrac > 0) _rrect(ctx, eX+2, eY+2, (eW-4)*expFrac, eH-4, 6, '#6c63ff');
   ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 15px system-ui,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(vs.exposure.toFixed(2), eX + eW/2, eY + 27);
+  ctx.fillText(vs.exposure.toFixed(2), eX + eW/2, eY + 26);
 
   // Scale section
   ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('SCALE', 24, 225);
-  const sX = 236, sY = 235, sW = 260, sH = 42;
+  ctx.fillText('SCALE', 24, 216);
+  const sX = 236, sY = 226, sW = 260, sH = 40;
   _rrect(ctx, sX, sY, sW, sH, 8, 'rgba(46,50,72,0.8)');
   if (vs.modelScale > 1) {
     const sFrac = Math.min(Math.log10(vs.modelScale) / Math.log10(500), 1);
@@ -332,25 +336,36 @@ function _repaintPanel(state, vs) {
     ? (vs.modelScale < 0.1 ? vs.modelScale.toFixed(3) : vs.modelScale.toFixed(2)) + '×'
     : '—';
   ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 15px system-ui,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(sLabel, sX + sW/2, sY + 27);
+  ctx.fillText(sLabel, sX + sW/2, sY + 26);
 
   // Rotation section
   ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('ROTATION (saved)', 24, 285);
+  ctx.fillText('ROTATION (saved)', 24, 274);
   const rot = vs.rotation || { x: 0, y: 0, z: 0 };
   ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 14px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(`${Math.round(rot.x||0)}° / ${Math.round(rot.y||0)}° / ${Math.round(rot.z||0)}°`, 236, 285);
+  ctx.fillText(`${Math.round(rot.x||0)}° / ${Math.round(rot.y||0)}° / ${Math.round(rot.z||0)}°`, 236, 274);
+
+  // Graphics section
+  ctx.fillStyle = '#7c82a0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('GRAPHICS (VR PERFORMANCE)', 24, 348);
+  const gq = vs.graphicsQuality || 'medium';
+  ctx.fillStyle = '#e8eaf0'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(gq === 'low' ? 'smoother' : gq === 'high' ? 'sharper' : 'balanced', 400, 348);
 
   // Buttons
   for (const btn of PANEL_BUTTONS) {
     if (!vs.hasAnimation && ['play', 'pause', 'rewind'].includes(btn.id)) continue;
     const hov = btn.id === hoverId;
+    const gfxActive =
+      (btn.id === 'gfx_low'  && gq === 'low') ||
+      (btn.id === 'gfx_med'  && gq === 'medium') ||
+      (btn.id === 'gfx_high' && gq === 'high');
     _rrect(ctx, btn.x, btn.y, btn.w, btn.h, 10,
-      hov ? '#6c63ff' : 'rgba(36,39,54,0.9)',
-      hov ? '#9088ff' : 'rgba(80,84,120,0.6)', 1.5
+      hov || gfxActive ? '#6c63ff' : 'rgba(36,39,54,0.9)',
+      hov || gfxActive ? '#9088ff' : 'rgba(80,84,120,0.6)', 1.5
     );
     ctx.fillStyle = '#e8eaf0';
-    ctx.font = `${hov ? 'bold ' : ''}14px system-ui,sans-serif`;
+    ctx.font = `${hov || gfxActive ? 'bold ' : ''}14px system-ui,sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText(btn.label, btn.x + btn.w/2, btn.y + btn.h/2 + 5);
   }
@@ -570,6 +585,9 @@ function _firePanelClick(ctrl, panelState, actions) {
     case 'rot_x_pos':   actions.nudgeRotation('x',  90);                        break;
     case 'rot_y_neg':   actions.nudgeRotation('y', -90);                        break;
     case 'rot_y_pos':   actions.nudgeRotation('y',  90);                        break;
+    case 'gfx_low':     actions.setGraphicsQuality('low');                      break;
+    case 'gfx_med':     actions.setGraphicsQuality('medium');                   break;
+    case 'gfx_high':    actions.setGraphicsQuality('high');                     break;
     case 'close_panel': actions.showPanel(false);                               break;
   }
   panelState.dirty = true;

@@ -332,7 +332,8 @@ def save_viewer_settings(model_id: str):
         "position": { "x": 0, "y": 0, "z": 0 },    # metres offset
         "scale": 1.0,                 # multiplier of auto-fit when scale_relative=true
         "scale_relative": true,
-        "exposure": 1.0
+        "exposure": 1.0,
+        "graphics_quality": "low|medium|high"
       }
     """
     if not _validate_model_id(model_id):
@@ -376,6 +377,11 @@ def save_viewer_settings(model_id: str):
             if not (0.0 <= exposure <= 4.0):
                 return jsonify(error="exposure must be between 0 and 4"), 422
             current["exposure"] = round(exposure, 4)
+        if "graphics_quality" in payload:
+            gq = str(payload["graphics_quality"]).strip().lower()
+            if gq not in ("low", "medium", "high"):
+                return jsonify(error="graphics_quality must be low, medium, or high"), 422
+            current["graphics_quality"] = gq
     except (TypeError, ValueError) as exc:
         return jsonify(error=str(exc)), 422
 

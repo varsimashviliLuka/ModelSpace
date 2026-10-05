@@ -106,6 +106,11 @@ def view_model(model_id: str):
         ),
         "scale_relative": bool(vs.get("scale_relative", False)),
         "exposure": float(vs.get("exposure", 1.0) or 1.0),
+        "graphics_quality": (
+            vs.get("graphics_quality")
+            if vs.get("graphics_quality") in ("low", "medium", "high")
+            else None
+        ),
     }
 
     return render_template(

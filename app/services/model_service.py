@@ -27,6 +27,9 @@ from pathlib import Path
 MODEL_PRIORITY: list[str] = ["glb", "gltf", "obj", "fbx", "blend"]
 BROWSER_RENDERABLE: frozenset[str] = frozenset({"glb", "gltf", "obj"})
 
+# Ignore app-generated files left over from older experiments.
+INTERNAL_DIR_PREFIX: str = "_modelspace/"
+
 LOADER_MAP: dict[str, str] = {
     "glb":   "GLTFLoader",
     "gltf":  "GLTFLoader",
@@ -242,11 +245,19 @@ def _resolve_obj_package(
 # Internal helpers
 # ------------------------------------------------------------------ #
 
+def _is_internal_path(path: str) -> bool:
+    p = path.replace("\\", "/").lstrip("/")
+    return p.startswith(INTERNAL_DIR_PREFIX)
+
+
 def _group_by_ext(file_entries: list[dict]) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for entry in file_entries:
-        ext = _ext(entry["path"])
-        result.setdefault(ext, []).append(entry["path"])
+        path = entry["path"]
+        if _is_internal_path(path):
+            continue
+        ext = _ext(path)
+        result.setdefault(ext, []).append(path)
     return result
 
 
