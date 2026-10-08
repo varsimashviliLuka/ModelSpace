@@ -67,10 +67,29 @@
     {% if ply_files %}
     <section class="panel-section" id="ply-blocks-section">
       <div class="panel-label">
-        ▦ Blocks
-        <span class="panel-hint">download on check</span>
+        <span>▦ Blocks <span class="panel-hint">download, then show</span></span>
+        <span class="ply-all-tools">
+          <span class="ply-all-progress" id="ply-all-progress" title="Downloaded blocks">
+            <svg viewBox="0 0 36 36" aria-hidden="true">
+              <circle class="ply-all-progress__track" cx="18" cy="18" r="14"></circle>
+              <circle class="ply-all-progress__fill" cx="18" cy="18" r="14"></circle>
+            </svg>
+          </span>
+          <span class="ply-all-count" id="ply-all-count">0/0</span>
+          <button type="button" id="ply-download-all" class="ply-download-all" title="Download every block that is not already downloaded">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>
+            All
+          </button>
+        </span>
       </div>
-      <p class="panel-footnote">A block downloads the first time you check it. Unchecking hides it and keeps it cached.</p>
+      <p class="panel-footnote">Download runs in the background. Check a block only after it finishes.</p>
+      <label class="ply-show-all" title="Show every block that has finished downloading">
+        <span class="ply-check">
+          <input id="ply-show-all" class="ply-block__check" type="checkbox" disabled />
+          <span class="ply-check__box" aria-hidden="true"></span>
+        </span>
+        Show all downloaded
+      </label>
       <div id="ply-block-list" class="ply-block-list"></div>
     </section>
     {% endif %}
@@ -227,6 +246,18 @@
   </aside>
 
   <button id="panel-toggle" class="panel-toggle" title="Toggle controls">⚙</button>
+
+  <div id="ply-delete-modal" class="modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="ply-delete-title">
+    <div class="modal__backdrop"></div>
+    <div class="modal__box">
+      <h3 id="ply-delete-title" class="modal__title">Delete block?</h3>
+      <p class="modal__body">“<span id="ply-delete-name"></span>” will be removed from this view. You will need to download it again before you can show it.</p>
+      <div class="modal__actions">
+        <button type="button" id="ply-delete-cancel" class="btn btn--secondary">Cancel</button>
+        <button type="button" id="ply-delete-confirm" class="btn btn--danger">Delete</button>
+      </div>
+    </div>
+  </div>
 
   <script type="importmap">
   {
@@ -1181,6 +1212,10 @@
     let plyPumping = false;
     let plyThumbDone = false;
 
+    const PLY_ICON_DL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>';
+    const PLY_ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    const PLY_ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M8 7l1 13h6l1-13"/><path d="M10 11v6M14 11v6"/></svg>';
+
     function plyLabel(rel) {
       return rel.split('/').pop().replace(/\.ply$/i, '');
     }
@@ -1204,23 +1239,101 @@
       for (const tex of textures) tex.dispose();
     }
 
-    function plyStatusText(st) {
-      if (st.status === 'loading') return 'Downloading…';
-      if (st.status === 'queued') return 'Waiting…';
-      if (st.status === 'cached') return 'Cached';
-      if (st.status === 'shown') return 'Shown';
-      if (st.status === 'error') return 'Failed';
-      return '';
-    }
-
     function refreshPlyRow(rel) {
       const st = plyBlocks.get(rel);
       const row = document.querySelector(`.ply-block[data-ply="${CSS.escape(rel)}"]`);
       if (!row || !st) return;
-      const status = row.querySelector('.ply-block__status');
-      const input = row.querySelector('input');
-      if (status) status.textContent = plyStatusText(st);
-      if (input) input.checked = !!st.wanted;
+      row.dataset.status = st.status;
+      const check = row.querySelector('.ply-block__check');
+      const fill = row.querySelector('.ply-block__bar-fill');
+      const hint = row.querySelector('.ply-block__hint');
+      const busy = st.status === 'queued' || st.status === 'loading' || st.status === 'preparing';
+      const ready = st.status === 'ready' || st.status === 'shown';
+      check.disabled = !ready;
+      check.checked = st.status === 'shown';
+      const pct = st.status === 'preparing' ? 100 : Math.round((st.progress || 0) * 100);
+      fill.style.width = `${busy ? pct : 0}%`;
+      if (st.status === 'queued') hint.textContent = 'Waiting';
+      else if (st.status === 'loading') hint.textContent = totalLabel(st);
+      else if (st.status === 'preparing') hint.textContent = 'Preparing';
+      else if (st.status === 'error') hint.textContent = 'Failed';
+      else if (st.status === 'shown') hint.textContent = 'Visible';
+      else if (st.status === 'ready') hint.textContent = 'Ready';
+      else hint.textContent = '';
+      refreshPlyDownloadAll();
+      refreshPlyShowAll();
+    }
+
+    function refreshPlyDownloadAll() {
+      const btn = document.getElementById('ply-download-all');
+      const ring = document.querySelector('.ply-all-progress__fill');
+      const count = document.getElementById('ply-all-count');
+      const wrap = document.getElementById('ply-all-progress');
+      const states = [...plyBlocks.values()];
+      const total = states.length;
+      const finished = states.filter((st) => st.group).length;
+      let units = finished;
+      for (const st of states) {
+        if (st.group) continue;
+        if (st.status === 'preparing') units += 0.92;
+        else if (st.status === 'loading') units += st.progress || 0;
+      }
+      const ratio = total ? Math.min(1, units / total) : 0;
+      if (btn) {
+        btn.disabled = !states.some((st) => (
+          !st.group && st.status !== 'queued' && st.status !== 'loading' && st.status !== 'preparing'
+        ));
+      }
+      if (ring) {
+        const length = 2 * Math.PI * 14;
+        ring.style.strokeDasharray = String(length);
+        ring.style.strokeDashoffset = String(length * (1 - ratio));
+      }
+      if (wrap) wrap.classList.toggle('is-complete', total > 0 && finished === total);
+      if (count) count.textContent = `${finished}/${total}`;
+      if (wrap) wrap.title = `${finished} of ${total} downloaded`;
+    }
+
+    function queueAllPlyDownloads() {
+      for (const rel of plyBlocks.keys()) queuePlyDownload(rel);
+    }
+
+    function refreshPlyShowAll() {
+      const input = document.getElementById('ply-show-all');
+      if (!input) return;
+      const downloaded = [...plyBlocks.values()].filter((st) => st.group);
+      const shown = downloaded.filter((st) => st.status === 'shown');
+      input.disabled = downloaded.length === 0;
+      input.checked = downloaded.length > 0 && shown.length === downloaded.length;
+      input.indeterminate = shown.length > 0 && shown.length < downloaded.length;
+    }
+
+    function setAllDownloadedShown(shown) {
+      let fitted = [...plyBlocks.values()].some((st) => st.status === 'shown');
+      for (const [rel, st] of plyBlocks) {
+        if (!st.group) continue;
+        if (shown && st.status !== 'shown') {
+          modelRoot.add(st.group);
+          st.status = 'shown';
+          if (!fitted) {
+            fitted = true;
+            fitModel(modelRoot);
+          }
+          if (!plyThumbDone) {
+            plyThumbDone = true;
+            captureThumbnail();
+          }
+        } else if (!shown && st.status === 'shown') {
+          modelRoot.remove(st.group);
+          st.status = 'ready';
+        }
+        refreshPlyRow(rel);
+      }
+    }
+
+    function totalLabel(st) {
+      if (!st.total) return 'Downloading…';
+      return `${Math.round((st.progress || 0) * 100)}%`;
     }
 
     function initPlyPicker() {
@@ -1231,16 +1344,38 @@
       const host = document.getElementById('ply-block-list');
       if (host) {
         for (const rel of list) {
-          plyBlocks.set(rel, { wanted: false, status: 'idle', group: null, abort: null });
-          const row = document.createElement('label');
+          plyBlocks.set(rel, {
+            status: 'idle', group: null, abort: null, progress: 0, total: 0,
+          });
+          const row = document.createElement('div');
           row.className = 'ply-block';
           row.dataset.ply = rel;
-          row.innerHTML = `<input type="checkbox" /><span class="ply-block__name"></span><span class="ply-block__status"></span>`;
+          row.innerHTML = `
+            <label class="ply-check" title="Show block">
+              <input class="ply-block__check" type="checkbox" disabled />
+              <span class="ply-check__box" aria-hidden="true"></span>
+            </label>
+            <span class="ply-block__body">
+              <span class="ply-block__name"></span>
+              <span class="ply-block__meta">
+                <span class="ply-block__bar"><span class="ply-block__bar-fill"></span></span>
+                <span class="ply-block__hint"></span>
+              </span>
+            </span>
+            <span class="ply-block__actions">
+              <button type="button" class="ply-block__btn ply-block__dl" title="Download">${PLY_ICON_DL}</button>
+              <button type="button" class="ply-block__btn ply-block__cancel" title="Cancel">${PLY_ICON_X}</button>
+              <button type="button" class="ply-block__btn ply-block__del" title="Remove downloaded block">${PLY_ICON_DEL}</button>
+            </span>`;
           row.querySelector('.ply-block__name').textContent = plyLabel(rel);
-          row.querySelector('input').addEventListener('change', (e) => {
-            setPlyBlockWanted(rel, e.target.checked);
+          row.querySelector('.ply-block__dl').addEventListener('click', () => queuePlyDownload(rel));
+          row.querySelector('.ply-block__cancel').addEventListener('click', () => cancelPlyDownload(rel));
+          row.querySelector('.ply-block__del').addEventListener('click', () => askRemovePlyBlock(rel));
+          row.querySelector('.ply-block__check').addEventListener('change', (e) => {
+            setPlyBlockShown(rel, e.target.checked);
           });
           host.appendChild(row);
+          refreshPlyRow(rel);
         }
       }
       infoFormat.textContent = 'PLY';
@@ -1249,37 +1384,126 @@
       stopLoadingTips();
       loadingOverlay.style.display = 'none';
       _setupVRButton();
+    }
+
+    function queuePlyDownload(rel) {
+      const st = plyBlocks.get(rel);
+      if (!st || st.group || st.status === 'loading' || st.status === 'queued' || st.status === 'preparing') return;
+      st.status = 'queued';
+      st.progress = 0;
+      st.total = 0;
+      refreshPlyRow(rel);
       pumpPlyQueue();
     }
 
-    function setPlyBlockWanted(rel, wanted) {
+    let plyRemoveTarget = null;
+
+    function askRemovePlyBlock(rel) {
+      const st = plyBlocks.get(rel);
+      if (!st || !st.group) return;
+      plyRemoveTarget = rel;
+      const nameEl = document.getElementById('ply-delete-name');
+      const modal = document.getElementById('ply-delete-modal');
+      if (nameEl) nameEl.textContent = plyLabel(rel);
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function closePlyRemoveModal() {
+      plyRemoveTarget = null;
+      const modal = document.getElementById('ply-delete-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function confirmRemovePlyBlock() {
+      const rel = plyRemoveTarget;
+      closePlyRemoveModal();
+      if (!rel) return;
+      const st = plyBlocks.get(rel);
+      if (!st || !st.group) return;
+      if (st.group.parent) st.group.parent.remove(st.group);
+      disposeObject3D(st.group);
+      st.group = null;
+      st.abort = null;
+      st.cancelled = false;
+      st.progress = 0;
+      st.total = 0;
+      st.status = 'idle';
+      refreshPlyRow(rel);
+    }
+
+    document.getElementById('ply-download-all')?.addEventListener('click', queueAllPlyDownloads);
+    document.getElementById('ply-show-all')?.addEventListener('change', (e) => {
+      setAllDownloadedShown(e.target.checked);
+    });
+    document.getElementById('ply-delete-cancel')?.addEventListener('click', closePlyRemoveModal);
+    document.getElementById('ply-delete-confirm')?.addEventListener('click', confirmRemovePlyBlock);
+    document.querySelector('#ply-delete-modal .modal__backdrop')?.addEventListener('click', closePlyRemoveModal);
+
+    function cancelPlyDownload(rel) {
       const st = plyBlocks.get(rel);
       if (!st) return;
-      st.wanted = wanted;
-      if (!wanted) {
-        if (st.abort) { st.abort.abort(); st.abort = null; }
-        if (st.group) {
-          modelRoot.remove(st.group);
-          st.status = 'cached';
-        } else if (st.status !== 'error') {
-          st.status = 'idle';
-        }
+      st.cancelled = true;
+      if (st.abort) st.abort.abort();
+      if (st.status === 'queued') {
+        st.status = 'idle';
+        st.cancelled = false;
+        st.progress = 0;
+        refreshPlyRow(rel);
+      }
+    }
+
+    function setPlyBlockShown(rel, shown) {
+      const st = plyBlocks.get(rel);
+      if (!st || !st.group) {
         refreshPlyRow(rel);
         return;
       }
-      if (st.group) {
+      if (shown) {
+        const first = ![...plyBlocks.values()].some((s) => s.status === 'shown');
         modelRoot.add(st.group);
         st.status = 'shown';
         refreshPlyRow(rel);
-        return;
-      }
-      if (st.status === 'shown' || st.status === 'loading' || st.status === 'queued') {
+        if (first) fitModel(modelRoot);
+        if (!plyThumbDone) {
+          plyThumbDone = true;
+          captureThumbnail();
+        }
+      } else {
+        modelRoot.remove(st.group);
+        st.status = 'ready';
         refreshPlyRow(rel);
-        return;
       }
-      st.status = 'queued';
-      refreshPlyRow(rel);
-      pumpPlyQueue();
+    }
+
+    async function readBodyWithProgress(resp, st) {
+      const total = Number(resp.headers.get('content-length') || 0);
+      st.total = total;
+      if (!resp.body) {
+        const buf = await resp.arrayBuffer();
+        st.progress = 1;
+        refreshPlyRow(st.rel);
+        return buf;
+      }
+      const reader = resp.body.getReader();
+      const chunks = [];
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        st.progress = total ? received / total : 0;
+        refreshPlyRow(st.rel);
+      }
+      const merged = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+      st.progress = 1;
+      refreshPlyRow(st.rel);
+      return merged.buffer;
     }
 
     async function pumpPlyQueue() {
@@ -1287,52 +1511,58 @@
       plyPumping = true;
       try {
         while (true) {
-          const next = [...plyBlocks.entries()].find(([, st]) => st.wanted && st.status === 'queued');
+          const next = [...plyBlocks.entries()].find(([, st]) => st.status === 'queued');
           if (!next) break;
           const [rel, st] = next;
+          st.rel = rel;
+          st.cancelled = false;
           st.status = 'loading';
           st.abort = new AbortController();
+          st.progress = 0;
           refreshPlyRow(rel);
-          setLoadProgress(null, `Downloading ${plyLabel(rel)}…`);
-          loadingOverlay.style.display = 'flex';
-          loadingOverlay.style.opacity = '1';
           try {
             const resp = await fetch(assetURL(rel), { signal: st.abort.signal });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const buf = await resp.arrayBuffer();
-            if (!st.wanted) continue;
+            const buf = await readBodyWithProgress(resp, st);
+            if (st.cancelled) {
+              st.status = 'idle';
+              st.progress = 0;
+              refreshPlyRow(rel);
+              continue;
+            }
+            st.status = 'preparing';
+            refreshPlyRow(rel);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
             const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/') + 1) : '';
             const block = buildPlyBlock(THREE, buf, (name) => assetURL(dir + name));
-            if (!st.wanted) {
+            if (st.cancelled) {
               disposeObject3D(block);
+              st.status = 'idle';
+              st.progress = 0;
+              refreshPlyRow(rel);
               continue;
             }
             downscaleMaterialMaps(block);
-            modelRoot.add(block);
             st.group = block;
-            st.status = 'shown';
+            st.status = 'ready';
             st.abort = null;
+            st.progress = 1;
             refreshPlyRow(rel);
-            fitModel(modelRoot);
-            if (!plyThumbDone) {
-              plyThumbDone = true;
-              captureThumbnail();
-            }
           } catch (err) {
-            if (err && err.name === 'AbortError') {
-              if (!st.wanted) st.status = 'idle';
-            } else if (st.wanted) {
+            st.abort = null;
+            st.progress = 0;
+            if (err && err.name === 'AbortError' || st.cancelled) {
+              st.status = 'idle';
+              st.cancelled = false;
+            } else {
               st.status = 'error';
               console.error(err);
             }
-            st.abort = null;
             refreshPlyRow(rel);
           }
         }
       } finally {
         plyPumping = false;
-        const anyLoading = [...plyBlocks.values()].some((st) => st.wanted && (st.status === 'queued' || st.status === 'loading'));
-        if (!anyLoading) hideLoading();
       }
     }
 
