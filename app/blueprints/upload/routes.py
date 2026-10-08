@@ -148,7 +148,7 @@ def upload_file():
             None,
             "Unsupported file type.",
             hint=(
-                "Upload a single .glb / .gltf / .obj file, "
+                "Upload a single .glb / .gltf / .obj / .ply file, "
                 "or a .zip / .rar archive containing the model (and textures)."
             ),
         )

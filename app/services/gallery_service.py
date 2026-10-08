@@ -83,5 +83,5 @@ def _display_name(filename: str) -> str:
         return "Untitled"
     stem = Path(filename).stem          # strip last extension
     # Also strip the archive extension if double-suffixed: model.glb.zip → model.glb
-    stem = Path(stem).stem if Path(stem).suffix in (".glb", ".gltf", ".obj") else stem
+    stem = Path(stem).stem if Path(stem).suffix in (".glb", ".gltf", ".obj", ".ply") else stem
     return stem.replace("_", " ").replace("-", " ").strip() or filename

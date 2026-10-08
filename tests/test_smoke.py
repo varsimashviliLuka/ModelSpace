@@ -163,6 +163,32 @@ def test_upload_zip_with_glb(client, app):
     assert meta["detection"]["main_file"].endswith("thing.glb")
 
 
+def test_upload_zip_with_ply_blocks(client, app):
+    """A zip of several .ply blocks should be ready and list every block."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("terra/Block2/Block2.ply", b"ply")
+        zf.writestr("terra/Block10/Block10.ply", b"ply")
+        zf.writestr("terra/Block1/Block1.ply", b"ply")
+    buf.seek(0)
+    response = client.post(
+        "/upload/",
+        data={"archive": (buf, "terra.zip")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    assert response.status_code in (301, 302)
+    model_id = response.headers["Location"].rstrip("/").split("/")[-1]
+    meta = json.loads(
+        (app.config["UPLOAD_FOLDER"] / model_id / "meta.json").read_text(encoding="utf-8")
+    )
+    assert meta["status"] == "ready"
+    assert meta["detection"]["format"] == "ply"
+    assert meta["detection"]["loader"] == "PLYBlockLoader"
+    names = [p.split("/")[-1] for p in meta["detection"]["ply_files"]]
+    assert names == ["Block1.ply", "Block2.ply", "Block10.ply"]
+
+
 def test_save_viewer_settings_persists(client, app):
     """PATCH viewer-settings should persist rotation, position, scale, exposure."""
     glb_bytes = b"glTF" + b"\x00" * 20

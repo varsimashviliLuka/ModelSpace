@@ -35,11 +35,11 @@ class Config:
     # Prefer .glb for textures/animations; .gltf/.obj with external assets
     # still need a .zip/.rar package.
     ALLOWED_DIRECT_MODEL_EXTENSIONS: frozenset = frozenset(
-        {"glb", "gltf", "obj"}
+        {"glb", "gltf", "obj", "ply"}
     )
     # 3D / asset formats we recognise inside an archive.
     SUPPORTED_MODEL_EXTENSIONS: frozenset = frozenset(
-        {"glb", "gltf", "obj", "mtl", "fbx", "blend"}
+        {"glb", "gltf", "obj", "ply", "mtl", "fbx", "blend"}
     )
     SUPPORTED_TEXTURE_EXTENSIONS: frozenset = frozenset(
         {"png", "jpg", "jpeg", "webp", "bmp", "tga", "hdr", "exr"}

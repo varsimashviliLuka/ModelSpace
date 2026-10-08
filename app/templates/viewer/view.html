@@ -64,6 +64,17 @@
   <!-- ── Side panel ──────────────────────────────────────────── -->
   <aside id="side-panel" class="side-panel">
 
+    {% if ply_files %}
+    <section class="panel-section" id="ply-blocks-section">
+      <div class="panel-label">
+        ▦ Blocks
+        <span class="panel-hint">download on check</span>
+      </div>
+      <p class="panel-footnote">A block downloads the first time you check it. Unchecking hides it and keeps it cached.</p>
+      <div id="ply-block-list" class="ply-block-list"></div>
+    </section>
+    {% endif %}
+
     <!-- Graphics quality (VR performance) -->
     <section class="panel-section">
       <div class="panel-label">
@@ -234,6 +245,7 @@
     import { MTLLoader }      from 'three/addons/loaders/MTLLoader.js';
     import { VRButton }       from 'three/addons/webxr/VRButton.js';
     import { initVR }         from '/static/js/vr-ui.js';
+    import { buildPlyBlock }  from '/static/js/ply-blocks.js';
 
     // ── Flask data ─────────────────────────────────────────────
     const MODEL_ID      = {{ model_id        | tojson }};
@@ -245,6 +257,7 @@
     const HAS_ANIM      = {{ has_animation   | tojson }};
     const HAS_THUMBNAIL = {{ has_thumbnail   | tojson }};
     const SAVED         = {{ viewer_settings | tojson }};
+    const PLY_FILES     = {{ ply_files | default([], true) | tojson }};
 
     function assetURL(p) { return `/view/${MODEL_ID}/asset/${p}`; }
     function assetDir(p) {
@@ -1164,10 +1177,170 @@
       }
     }
 
+    const plyBlocks = new Map();
+    let plyPumping = false;
+    let plyThumbDone = false;
+
+    function plyLabel(rel) {
+      return rel.split('/').pop().replace(/\.ply$/i, '');
+    }
+
+    function disposeObject3D(root) {
+      const textures = new Set();
+      root.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+        const mats = obj.material
+          ? (Array.isArray(obj.material) ? obj.material : [obj.material])
+          : [];
+        for (const mat of mats) {
+          if (!mat) continue;
+          for (const key of Object.keys(mat)) {
+            const val = mat[key];
+            if (val && val.isTexture) textures.add(val);
+          }
+          mat.dispose();
+        }
+      });
+      for (const tex of textures) tex.dispose();
+    }
+
+    function plyStatusText(st) {
+      if (st.status === 'loading') return 'Downloading…';
+      if (st.status === 'queued') return 'Waiting…';
+      if (st.status === 'cached') return 'Cached';
+      if (st.status === 'shown') return 'Shown';
+      if (st.status === 'error') return 'Failed';
+      return '';
+    }
+
+    function refreshPlyRow(rel) {
+      const st = plyBlocks.get(rel);
+      const row = document.querySelector(`.ply-block[data-ply="${CSS.escape(rel)}"]`);
+      if (!row || !st) return;
+      const status = row.querySelector('.ply-block__status');
+      const input = row.querySelector('input');
+      if (status) status.textContent = plyStatusText(st);
+      if (input) input.checked = !!st.wanted;
+    }
+
+    function initPlyPicker() {
+      const list = (PLY_FILES && PLY_FILES.length) ? PLY_FILES : (MAIN_FILE ? [MAIN_FILE] : []);
+      if (!list.length) { showError('No PLY blocks found.'); return; }
+      modelRoot = new THREE.Group();
+      scene.add(modelRoot);
+      const host = document.getElementById('ply-block-list');
+      if (host) {
+        for (const rel of list) {
+          plyBlocks.set(rel, { wanted: false, status: 'idle', group: null, abort: null });
+          const row = document.createElement('label');
+          row.className = 'ply-block';
+          row.dataset.ply = rel;
+          row.innerHTML = `<input type="checkbox" /><span class="ply-block__name"></span><span class="ply-block__status"></span>`;
+          row.querySelector('.ply-block__name').textContent = plyLabel(rel);
+          row.querySelector('input').addEventListener('change', (e) => {
+            setPlyBlockWanted(rel, e.target.checked);
+          });
+          host.appendChild(row);
+        }
+      }
+      infoFormat.textContent = 'PLY';
+      infoFile.textContent = `${list.length} blocks`;
+      sidePanel?.classList.add('side-panel--open');
+      stopLoadingTips();
+      loadingOverlay.style.display = 'none';
+      _setupVRButton();
+      pumpPlyQueue();
+    }
+
+    function setPlyBlockWanted(rel, wanted) {
+      const st = plyBlocks.get(rel);
+      if (!st) return;
+      st.wanted = wanted;
+      if (!wanted) {
+        if (st.abort) { st.abort.abort(); st.abort = null; }
+        if (st.group) {
+          modelRoot.remove(st.group);
+          st.status = 'cached';
+        } else if (st.status !== 'error') {
+          st.status = 'idle';
+        }
+        refreshPlyRow(rel);
+        return;
+      }
+      if (st.group) {
+        modelRoot.add(st.group);
+        st.status = 'shown';
+        refreshPlyRow(rel);
+        return;
+      }
+      if (st.status === 'shown' || st.status === 'loading' || st.status === 'queued') {
+        refreshPlyRow(rel);
+        return;
+      }
+      st.status = 'queued';
+      refreshPlyRow(rel);
+      pumpPlyQueue();
+    }
+
+    async function pumpPlyQueue() {
+      if (plyPumping) return;
+      plyPumping = true;
+      try {
+        while (true) {
+          const next = [...plyBlocks.entries()].find(([, st]) => st.wanted && st.status === 'queued');
+          if (!next) break;
+          const [rel, st] = next;
+          st.status = 'loading';
+          st.abort = new AbortController();
+          refreshPlyRow(rel);
+          setLoadProgress(null, `Downloading ${plyLabel(rel)}…`);
+          loadingOverlay.style.display = 'flex';
+          loadingOverlay.style.opacity = '1';
+          try {
+            const resp = await fetch(assetURL(rel), { signal: st.abort.signal });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const buf = await resp.arrayBuffer();
+            if (!st.wanted) continue;
+            const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/') + 1) : '';
+            const block = buildPlyBlock(THREE, buf, (name) => assetURL(dir + name));
+            if (!st.wanted) {
+              disposeObject3D(block);
+              continue;
+            }
+            downscaleMaterialMaps(block);
+            modelRoot.add(block);
+            st.group = block;
+            st.status = 'shown';
+            st.abort = null;
+            refreshPlyRow(rel);
+            fitModel(modelRoot);
+            if (!plyThumbDone) {
+              plyThumbDone = true;
+              captureThumbnail();
+            }
+          } catch (err) {
+            if (err && err.name === 'AbortError') {
+              if (!st.wanted) st.status = 'idle';
+            } else if (st.wanted) {
+              st.status = 'error';
+              console.error(err);
+            }
+            st.abort = null;
+            refreshPlyRow(rel);
+          }
+        }
+      } finally {
+        plyPumping = false;
+        const anyLoading = [...plyBlocks.values()].some((st) => st.wanted && (st.status === 'queued' || st.status === 'loading'));
+        if (!anyLoading) hideLoading();
+      }
+    }
+
     function startLoading() {
-      if (!MAIN_FILE) { showError('No model file detected.'); return; }
+      if (!MAIN_FILE && !(PLY_FILES && PLY_FILES.length)) { showError('No model file detected.'); return; }
       if (LOADER_KEY==='GLTFLoader')     loadGLTF(assetURL(MAIN_FILE));
       else if (LOADER_KEY==='OBJLoader') loadOBJ(assetURL(MAIN_FILE), MTL_FILE ? assetURL(MTL_FILE) : null);
+      else if (LOADER_KEY==='PLYBlockLoader') initPlyPicker();
       else showError(`Format "${FMT}" cannot be rendered in the browser.\nPlease export as GLB and re-upload.`);
     }
 

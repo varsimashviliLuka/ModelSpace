@@ -24,8 +24,8 @@ from pathlib import Path
 # Format priority & loader mapping
 # ------------------------------------------------------------------ #
 
-MODEL_PRIORITY: list[str] = ["glb", "gltf", "obj", "fbx", "blend"]
-BROWSER_RENDERABLE: frozenset[str] = frozenset({"glb", "gltf", "obj"})
+MODEL_PRIORITY: list[str] = ["glb", "gltf", "obj", "ply", "fbx", "blend"]
+BROWSER_RENDERABLE: frozenset[str] = frozenset({"glb", "gltf", "obj", "ply"})
 
 # Ignore app-generated files left over from older experiments.
 INTERNAL_DIR_PREFIX: str = "_modelspace/"
@@ -34,6 +34,7 @@ LOADER_MAP: dict[str, str] = {
     "glb":   "GLTFLoader",
     "gltf":  "GLTFLoader",
     "obj":   "OBJLoader",
+    "ply":   "PLYBlockLoader",
     "fbx":   "unsupported",
     "blend": "unsupported",
 }
@@ -97,7 +98,7 @@ def detect(extract_dir: Path, file_entries: list[dict]) -> dict:
             "renderable": False, "textures": [], "mtl_file": None,
             "resource_base": None, "has_animation": False,
             "error": "No recognisable 3D model file found in the archive.",
-            "hint": "Supported formats: .glb, .gltf, .obj  (also detects: .fbx, .blend)",
+            "hint": "Supported formats: .glb, .gltf, .obj, .ply  (also detects: .fbx, .blend)",
             "all_models": _all_model_files(paths_by_ext),
         }
 
@@ -126,8 +127,12 @@ def detect(extract_dir: Path, file_entries: list[dict]) -> dict:
     if chosen_ext in ("glb", "gltf"):
         has_animation = _probe_gltf_animations(extract_dir / chosen_rel, chosen_ext)
 
+    ply_files: list[str] = []
+    if chosen_ext == "ply":
+        ply_files = sorted(paths_by_ext.get("ply", []), key=_natural_key)
+
     return {
-        "main_file":     chosen_rel,
+        "main_file":     ply_files[0] if ply_files else chosen_rel,
         "loader":        LOADER_MAP.get(chosen_ext, "unsupported"),
         "format":        chosen_ext,
         "renderable":    True,
@@ -138,6 +143,7 @@ def detect(extract_dir: Path, file_entries: list[dict]) -> dict:
         "error":         None,
         "hint":          None,
         "all_models":    _all_model_files(paths_by_ext),
+        "ply_files":     ply_files,
     }
 
 
@@ -263,6 +269,14 @@ def _group_by_ext(file_entries: list[dict]) -> dict[str, list[str]]:
 
 def _ext(path: str) -> str:
     return Path(path).suffix.lstrip(".").lower()
+
+
+def _natural_key(path: str) -> list:
+    """Block2 before Block10."""
+    return [
+        int(part) if part.isdigit() else part.lower()
+        for part in re.split(r"(\d+)", path.replace("\\", "/"))
+    ]
 
 
 def _pick_main_model(paths_by_ext: dict[str, list[str]]) -> tuple[str | None, str | None]:

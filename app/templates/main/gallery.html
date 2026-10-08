@@ -18,11 +18,11 @@
     <label class="file-drop" for="archive-input" id="drop-zone">
       <span class="file-drop__icon">📦</span>
       <span class="file-drop__text" id="drop-label">
-        Drop a <strong>.glb</strong> / <strong>.gltf</strong> / <strong>.obj</strong>
+        Drop a <strong>.glb</strong> / <strong>.gltf</strong> / <strong>.obj</strong> / <strong>.ply</strong>
         or a <strong>.zip</strong> / <strong>.rar</strong>, or <u>browse</u>
       </span>
       <input id="archive-input" type="file" name="archive"
-             accept=".glb,.gltf,.obj,.zip,.rar" hidden />
+             accept=".glb,.gltf,.obj,.ply,.zip,.rar" hidden />
     </label>
 
     <!-- Optional custom name -->
@@ -36,7 +36,7 @@
     </div>
 
     <div class="upload-zone__footer">
-      <span class="text-muted" style="font-size:.8rem">Max {{ max_upload_mb }} MB · GLB / GLTF / OBJ · or ZIP / RAR</span>
+      <span class="text-muted" style="font-size:.8rem">Max {{ max_upload_mb }} MB · GLB / GLTF / OBJ / PLY · or ZIP / RAR</span>
       <button type="submit" class="btn btn--primary upload-zone__btn"
               id="upload-btn" disabled>
         Upload &amp; Process
@@ -72,7 +72,7 @@
         {% else %}
           <div class="model-card__thumb model-card__thumb--placeholder">
             <span class="model-card__thumb-icon">
-              {% if model.format in ('glb','gltf') %}🧊{% elif model.format == 'obj' %}📐{% else %}📦{% endif %}
+              {% if model.format in ('glb','gltf') %}🧊{% elif model.format == 'obj' %}📐{% elif model.format == 'ply' %}🧱{% else %}📦{% endif %}
             </span>
           </div>
         {% endif %}
@@ -126,7 +126,7 @@
 <div class="empty-state">
   <div class="empty-state__icon">🧊</div>
   <h2>No models yet</h2>
-  <p class="text-muted">Upload a <code>.glb</code> / <code>.gltf</code> / <code>.obj</code>, or a <code>.zip</code> / <code>.rar</code> archive, to get started.</p>
+  <p class="text-muted">Upload a <code>.glb</code> / <code>.gltf</code> / <code>.obj</code> / <code>.ply</code>, or a <code>.zip</code> / <code>.rar</code> archive, to get started.</p>
 </div>
 {% endif %}
 
@@ -158,12 +158,12 @@ const bar      = document.getElementById('upload-progress-bar');
 const progText = document.getElementById('upload-progress-text');
 const nameInput= document.getElementById('model-name-input');
 
-const ALLOWED_RE = /\.(glb|gltf|obj|zip|rar)$/i;
+const ALLOWED_RE = /\.(glb|gltf|obj|ply|zip|rar)$/i;
 
 function setFile(file) {
   if (!file) return;
   if (!ALLOWED_RE.test(file.name)) {
-    alert('Unsupported file. Use .glb, .gltf, .obj, .zip, or .rar.');
+    alert('Unsupported file. Use .glb, .gltf, .obj, .ply, .zip, or .rar.');
     input.value = '';
     uploadBtn.disabled = true;
     return;
@@ -173,7 +173,7 @@ function setFile(file) {
   // Auto-fill name if blank
   if (!nameInput.value.trim()) {
     let stem = file.name.replace(/\.(zip|rar)$/i, '');
-    stem = stem.replace(/\.(glb|gltf|obj|fbx|blend)$/i, '');
+    stem = stem.replace(/\.(glb|gltf|obj|ply|fbx|blend)$/i, '');
     stem = stem.replace(/[_\-]+/g, ' ').trim();
     nameInput.value = stem;
   }
