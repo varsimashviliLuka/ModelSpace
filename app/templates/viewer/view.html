@@ -238,8 +238,9 @@
         <strong>Right stick</strong> = snap turn<br>
         <strong>X</strong> = menu &nbsp;·&nbsp; <strong>Y</strong> = play/pause<br>
         <strong>A</strong> = lower &nbsp;·&nbsp; <strong>B</strong> = raise<br>
-        <strong>Scale ⊖/⊕</strong> &amp; <strong>X/Y ±90°</strong> in VR panel<br>
-        <strong>Graphics Low/Med/High</strong> in VR panel for performance
+        <strong>Panel → Model</strong> = move, rotate, scale<br>
+        <strong>Panel → Blocks</strong> = download and show<br>
+        <strong>Graphics Low/Med/High</strong> in the panel for performance
       </p>
     </section>
 
@@ -792,6 +793,16 @@
       setModelRotation(next, { snap: true });
     }
 
+    function nudgePosition(axis, delta) {
+      const next = { ...currentPosition };
+      next[axis] = (Number(next[axis]) || 0) + delta;
+      setModelPosition(next, { snap: true });
+    }
+
+    function resetPosition() {
+      setModelPosition({ x: 0, y: 0, z: 0 });
+    }
+
     function scheduleSaveSettings() {
       if (suppressPersist) return;
       clearTimeout(saveSettingsTimer);
@@ -832,7 +843,34 @@
         rotation:    { ...currentRotation },
         position:    { ...currentPosition },
         graphicsQuality,
+        blocks: plyBlockSnapshot(),
       };
+    }
+
+    function plyBlockSnapshot() {
+      if (!plyBlocks) return [];
+      return [...plyBlocks.entries()].map(([rel, st]) => ({
+        rel,
+        label: plyLabel(rel),
+        status: st.status,
+        progress: st.progress || 0,
+        shown: st.status === 'shown',
+      }));
+    }
+
+    function plyVrCommand(cmd, rel) {
+      if (cmd === 'download') queuePlyDownload(rel);
+      else if (cmd === 'cancel') cancelPlyDownload(rel);
+      else if (cmd === 'delete') removePlyBlock(rel);
+      else if (cmd === 'toggle') {
+        const st = plyBlocks.get(rel);
+        if (st?.group) setPlyBlockShown(rel, st.status !== 'shown');
+      } else if (cmd === 'download-all') queueAllPlyDownloads();
+      else if (cmd === 'show-all') {
+        const downloaded = [...plyBlocks.values()].filter((s) => s.group);
+        const allShown = downloaded.length > 0 && downloaded.every((s) => s.status === 'shown');
+        setAllDownloadedShown(!allShown);
+      }
     }
 
     function setExposure(v, { persist = true } = {}) {
@@ -880,7 +918,8 @@
       renderer, scene, camera, controls,
       getViewerState, setExposure, playAnim, pauseAnim, rewindAnim, toggleAnim,
       scaleUp, scaleDown, setModelScale,
-      nudgeRotation,
+      nudgeRotation, nudgePosition, resetPosition,
+      plyCommand: plyVrCommand,
       setGraphicsQuality: (level, opts = {}) => applyGraphicsQuality(
         level || graphicsQuality,
         { persist: opts.persist !== false, fromUser: opts.fromUser !== false },
@@ -1414,10 +1453,7 @@
       if (modal) modal.style.display = 'none';
     }
 
-    function confirmRemovePlyBlock() {
-      const rel = plyRemoveTarget;
-      closePlyRemoveModal();
-      if (!rel) return;
+    function removePlyBlock(rel) {
       const st = plyBlocks.get(rel);
       if (!st || !st.group) return;
       if (st.group.parent) st.group.parent.remove(st.group);
@@ -1429,6 +1465,12 @@
       st.total = 0;
       st.status = 'idle';
       refreshPlyRow(rel);
+    }
+
+    function confirmRemovePlyBlock() {
+      const rel = plyRemoveTarget;
+      closePlyRemoveModal();
+      if (rel) removePlyBlock(rel);
     }
 
     document.getElementById('ply-download-all')?.addEventListener('click', queueAllPlyDownloads);

@@ -64,103 +64,231 @@ const _heightUpBinding   = () => _binding('heightUp',    1, 5);
 // testing and text look stretched / clipped.
 // ─────────────────────────────────────────────────────────────────
 
-const TEX_W          = 512;
-const TEX_H          = 640;
+const TEX_W          = 560;
+const TEX_H          = 720;
 const PANEL_WIDTH    = 0.50;                                    // metres wide
 const PANEL_HEIGHT   = PANEL_WIDTH * (TEX_H / TEX_W);           // keep aspect
-const PANEL_DISTANCE = 0.70;
-const PANEL_Y_OFFSET = 0.02;
+const PANEL_DISTANCE = 0.78;
+const PANEL_Y_OFFSET = -0.02;
 const RAY_LENGTH     = 8;
 
-const PAD    = 20;
-const GAP    = 10;
-const BTN_H  = 42;
+const PAD    = 16;
+const GAP    = 8;
+const BTN_H  = 40;
+const FOOTER_Y = TEX_H - PAD - BTN_H;
+
+let _panelTab = 'model';
+let _blockPage = 0;
+let _armDeleteRel = null;
+let _lastSig = '';
 
 /**
  * Build button rects + section y positions from current viewer state.
  * Animation row is omitted when the model has no clips so the panel
  * doesn't leave a dead gap under the title.
  */
+function _viewerSig(vs) {
+  const blocks = vs.blocks || [];
+  const b = blocks.map((x) => `${x.rel}:${x.status}:${Math.round((x.progress || 0) * 20)}:${x.shown ? 1 : 0}`).join(',');
+  const p = vs.position || {};
+  const r = vs.rotation || {};
+  return [
+    vs.exposure, vs.modelScale, vs.graphicsQuality, vs.isPlaying, vs.hasAnimation,
+    p.x, p.y, p.z, r.x, r.y, r.z,
+    _panelTab, _blockPage, _armDeleteRel, b,
+  ].join('|');
+}
+
+function _fmtPos(v) {
+  const n = Number(v) || 0;
+  return (Math.round(n * 10) / 10).toFixed(1);
+}
+
 function _buildLayout(vs) {
   const innerW = TEX_W - PAD * 2;
   const col3 = (innerW - GAP * 2) / 3;
   const col4 = (innerW - GAP * 3) / 4;
+  const half = (innerW - GAP) / 2;
   const buttons = [];
-  let y = 78; // below title + hint
-
   const sections = {};
+  const blocks = vs.blocks || [];
+  const hasBlocks = blocks.length > 0;
+  if (!hasBlocks) _panelTab = 'model';
 
+  let y = 64;
+
+  if (hasBlocks) {
+    sections.tabs = { y, h: 36 };
+    buttons.push(
+      { id: 'tab_model',  label: 'Model',  x: PAD,           y, w: half, h: 36, active: _panelTab === 'model' },
+      { id: 'tab_blocks', label: 'Blocks', x: PAD + half + GAP, y, w: half, h: 36, active: _panelTab === 'blocks' },
+    );
+    y += 36 + 14;
+  }
+
+  if (_panelTab === 'blocks' && hasBlocks) {
+    _layoutBlocks(vs, buttons, sections, y, innerW, half);
+  } else {
+    _layoutModel(vs, buttons, sections, y, innerW, col3, col4);
+  }
+
+  buttons.push(
+    { id: 'close_panel', label: 'Hide panel', x: PAD, y: FOOTER_Y, w: half, h: BTN_H },
+    { id: 'exit_vr', label: 'Exit VR', x: PAD + half + GAP, y: FOOTER_Y, w: half, h: BTN_H, danger: true },
+  );
+  sections.footerY = FOOTER_Y - 6;
+
+  return { buttons, sections, hasBlocks };
+}
+
+function _layoutModel(vs, buttons, sections, y, innerW, col3, col4) {
   if (vs.hasAnimation) {
     sections.animLabelY = y;
     y += 16;
-    const rowY = y;
     buttons.push(
-      { id: 'play',   label: '▶  Play',   x: PAD,                 y: rowY, w: col3, h: BTN_H },
-      { id: 'pause',  label: '⏸  Pause',  x: PAD + col3 + GAP,    y: rowY, w: col3, h: BTN_H },
-      { id: 'rewind', label: '⏮  Rewind', x: PAD + (col3 + GAP)*2,y: rowY, w: col3, h: BTN_H },
+      { id: 'play',   label: '▶  Play',   x: PAD,                  y, w: col3, h: BTN_H },
+      { id: 'pause',  label: '⏸  Pause',  x: PAD + col3 + GAP,     y, w: col3, h: BTN_H },
+      { id: 'rewind', label: '⏮  Rewind', x: PAD + (col3 + GAP) * 2, y, w: col3, h: BTN_H },
     );
-    y += BTN_H + 14;
+    y += BTN_H + 12;
   }
 
-  // Exposure: [−] [======== value ========] [+]
   sections.expLabelY = y;
   y += 16;
-  const expBtnW = 72;
-  const expBarX = PAD + expBtnW + GAP;
-  const expBarW = innerW - expBtnW * 2 - GAP * 2;
-  sections.expBar = { x: expBarX, y, w: expBarW, h: BTN_H };
+  const expBtnW = 64;
+  sections.expBar = { x: PAD + expBtnW + GAP, y, w: innerW - expBtnW * 2 - GAP * 2, h: BTN_H };
   buttons.push(
     { id: 'exp_down', label: '☀ −', x: PAD, y, w: expBtnW, h: BTN_H },
     { id: 'exp_up',   label: '☀ +', x: PAD + innerW - expBtnW, y, w: expBtnW, h: BTN_H },
   );
-  y += BTN_H + 14;
+  y += BTN_H + 12;
 
-  // Scale: [⊖] [======== value ========] [⊕]
   sections.scaleLabelY = y;
   y += 16;
-  const scBtnW = 100;
-  const scBarX = PAD + scBtnW + GAP;
-  const scBarW = innerW - scBtnW * 2 - GAP * 2;
-  sections.scaleBar = { x: scBarX, y, w: scBarW, h: BTN_H };
+  const scBtnW = 92;
+  sections.scaleBar = { x: PAD + scBtnW + GAP, y, w: innerW - scBtnW * 2 - GAP * 2, h: BTN_H };
   buttons.push(
     { id: 'scale_down', label: '⊖ Scale', x: PAD, y, w: scBtnW, h: BTN_H },
     { id: 'scale_up',   label: '⊕ Scale', x: PAD + innerW - scBtnW, y, w: scBtnW, h: BTN_H },
   );
-  y += BTN_H + 14;
+  y += BTN_H + 12;
 
-  // Rotation 4-across
   sections.rotLabelY = y;
   y += 16;
-  const rotY = y;
   buttons.push(
-    { id: 'rot_x_neg', label: 'X −90°', x: PAD,                  y: rotY, w: col4, h: BTN_H },
-    { id: 'rot_x_pos', label: 'X +90°', x: PAD + col4 + GAP,     y: rotY, w: col4, h: BTN_H },
-    { id: 'rot_y_neg', label: 'Y −90°', x: PAD + (col4 + GAP)*2, y: rotY, w: col4, h: BTN_H },
-    { id: 'rot_y_pos', label: 'Y +90°', x: PAD + (col4 + GAP)*3, y: rotY, w: col4, h: BTN_H },
+    { id: 'rot_x_neg', label: 'X −90°', x: PAD,                   y, w: col4, h: BTN_H },
+    { id: 'rot_x_pos', label: 'X +90°', x: PAD + col4 + GAP,      y, w: col4, h: BTN_H },
+    { id: 'rot_y_neg', label: 'Y −90°', x: PAD + (col4 + GAP) * 2, y, w: col4, h: BTN_H },
+    { id: 'rot_y_pos', label: 'Y +90°', x: PAD + (col4 + GAP) * 3, y, w: col4, h: BTN_H },
   );
-  y += BTN_H + 14;
+  y += BTN_H + 12;
 
-  // Graphics 3-across
+  const pos = vs.position || { x: 0, y: 0, z: 0 };
+  sections.posLabel = `POSITION   ${_fmtPos(pos.x)}   ${_fmtPos(pos.y)}   ${_fmtPos(pos.z)}`;
+  sections.posLabelY = y;
+  y += 16;
+  const col6 = (innerW - GAP * 5) / 6;
+  const axes = [
+    ['pos_x_neg', 'X −'], ['pos_x_pos', 'X +'],
+    ['pos_y_neg', 'Y −'], ['pos_y_pos', 'Y +'],
+    ['pos_z_neg', 'Z −'], ['pos_z_pos', 'Z +'],
+  ];
+  axes.forEach(([id, label], i) => {
+    buttons.push({ id, label, x: PAD + i * (col6 + GAP), y, w: col6, h: BTN_H });
+  });
+  y += BTN_H + 8;
+  buttons.push({ id: 'pos_reset', label: 'Reset position', x: PAD, y, w: innerW, h: 34 });
+  y += 34 + 12;
+
   sections.gfxLabelY = y;
   y += 16;
-  const gfxY = y;
   buttons.push(
-    { id: 'gfx_low',  label: 'Low',  x: PAD,                  y: gfxY, w: col3, h: BTN_H },
-    { id: 'gfx_med',  label: 'Med',  x: PAD + col3 + GAP,     y: gfxY, w: col3, h: BTN_H },
-    { id: 'gfx_high', label: 'High', x: PAD + (col3 + GAP)*2, y: gfxY, w: col3, h: BTN_H },
+    { id: 'gfx_low',  label: 'Low',  x: PAD,                   y, w: col3, h: BTN_H },
+    { id: 'gfx_med',  label: 'Med',  x: PAD + col3 + GAP,      y, w: col3, h: BTN_H },
+    { id: 'gfx_high', label: 'High', x: PAD + (col3 + GAP) * 2, y, w: col3, h: BTN_H },
   );
-  y += BTN_H + 16;
+}
 
-  // Bottom row: hide panel | exit immersive
-  const half = (innerW - GAP) / 2;
+function _layoutBlocks(vs, buttons, sections, y, innerW, half) {
+  const blocks = vs.blocks || [];
+  const finished = blocks.filter((b) => b.status === 'ready' || b.status === 'shown').length;
+  const allShown = finished > 0 && blocks.filter((b) => b.status === 'ready' || b.status === 'shown').every((b) => b.shown);
+  const pending = blocks.some((b) => b.status === 'idle' || b.status === 'error');
+  sections.blockLabel = `BLOCKS   ${finished}/${blocks.length}`;
+  sections.blockLabelY = y;
+  y += 18;
   buttons.push(
-    { id: 'close_panel', label: 'Hide panel', x: PAD, y, w: half, h: BTN_H },
-    { id: 'exit_vr',     label: 'Exit VR', x: PAD + half + GAP, y, w: half, h: BTN_H, danger: true },
+    { id: 'ply:download-all', label: 'Download all', x: PAD, y, w: half, h: BTN_H, dim: !pending },
+    { id: 'ply:show-all', label: allShown ? 'Hide all' : 'Show all', x: PAD + half + GAP, y, w: half, h: BTN_H, dim: finished === 0, active: allShown },
   );
-  y += BTN_H + 22;
-  sections.footerY = Math.min(TEX_H - 16, y);
+  y += BTN_H + 10;
 
-  return { buttons, sections };
+  const rowH = 48;
+  const pagerH = 32;
+  const listBottom = FOOTER_Y - 16;
+  const room = listBottom - y - pagerH - 8;
+  const perPage = Math.max(4, Math.floor(room / (rowH + 6)));
+  const pages = Math.max(1, Math.ceil(blocks.length / perPage));
+  if (_blockPage >= pages) _blockPage = pages - 1;
+  if (_blockPage < 0) _blockPage = 0;
+  const slice = blocks.slice(_blockPage * perPage, _blockPage * perPage + perPage);
+
+  sections.rows = [];
+  for (const block of slice) {
+    const actionW = 78;
+    const toggleW = 64;
+    const toggle = {
+      id: `ply:toggle:${block.rel}`,
+      label: block.shown ? 'Hide' : 'Show',
+      x: PAD + 6,
+      y: y + 6,
+      w: toggleW,
+      h: rowH - 12,
+      enabled: block.status === 'ready' || block.status === 'shown',
+      active: !!block.shown,
+    };
+    const busy = block.status === 'queued' || block.status === 'loading' || block.status === 'preparing';
+    const armed = _armDeleteRel === block.rel;
+    let actionLabel = 'Get';
+    let danger = false;
+    let cmd = 'download';
+    if (busy) { actionLabel = 'Stop'; danger = true; cmd = 'cancel'; }
+    else if (block.status === 'ready' || block.status === 'shown') {
+      actionLabel = armed ? 'Sure?' : 'Del';
+      danger = true;
+      cmd = 'delete';
+    }
+    const action = {
+      id: `ply:${cmd}:${block.rel}`,
+      label: actionLabel,
+      x: PAD + innerW - actionW - 6,
+      y: y + 6,
+      w: actionW,
+      h: rowH - 12,
+      danger,
+      custom: true,
+    };
+    sections.rows.push({
+      x: PAD, y, w: innerW, h: rowH,
+      label: block.label,
+      status: block.status,
+      progress: block.progress || 0,
+      shown: !!block.shown,
+      toggle, action,
+    });
+    if (toggle.enabled) buttons.push({ ...toggle, custom: true });
+    buttons.push(action);
+    y += rowH + 6;
+  }
+
+  sections.pagerY = listBottom - pagerH;
+  if (pages > 1) {
+    buttons.push(
+      { id: 'ply_page_prev', label: 'Prev', x: PAD, y: sections.pagerY, w: 90, h: pagerH, dim: _blockPage === 0 },
+      { id: 'ply_page_next', label: 'Next', x: PAD + innerW - 90, y: sections.pagerY, w: 90, h: pagerH, dim: _blockPage >= pages - 1 },
+    );
+    sections.pagerLabel = `${_blockPage + 1} / ${pages}`;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -179,7 +307,8 @@ export function initVR(opts) {
   const {
     renderer, scene, camera, controls,
     getViewerState, setExposure, playAnim, pauseAnim, rewindAnim, toggleAnim,
-    scaleUp, scaleDown, setModelScale, nudgeRotation, setGraphicsQuality,
+    scaleUp, scaleDown, setModelScale, nudgeRotation, nudgePosition, resetPosition,
+    setGraphicsQuality, plyCommand,
   } = opts;
 
   // ── XR camera rig ─────────────────────────────────────────────
@@ -245,6 +374,9 @@ export function initVR(opts) {
     scaleDown:     scaleDown     || (() => {}),
     setModelScale: setModelScale || (() => {}),
     nudgeRotation: nudgeRotation || (() => {}),
+    nudgePosition: nudgePosition || (() => {}),
+    resetPosition: resetPosition || (() => {}),
+    plyCommand: plyCommand || (() => {}),
     setGraphicsQuality: setGraphicsQuality || (() => {}),
     showPanel,
     exitVR: () => {
@@ -308,8 +440,14 @@ export function initVR(opts) {
 
     _updateRaycasting(controllers, panelState);
 
-    if (panelState.visible && panelState.dirty) {
-      _repaintPanel(panelState, getViewerState());
+    if (panelState.visible) {
+      const vs = getViewerState();
+      const sig = _viewerSig(vs);
+      if (sig !== _lastSig) {
+        _lastSig = sig;
+        panelState.dirty = true;
+      }
+      if (panelState.dirty) _repaintPanel(panelState, vs);
     }
   }
 
@@ -360,98 +498,155 @@ function _repaintPanel(state, vs) {
   const layout = _buildLayout(vs);
   state.buttons = layout.buttons;
   const { sections } = layout;
+  const gq = vs.graphicsQuality || 'medium';
+  const rot = vs.rotation || { x: 0, y: 0, z: 0 };
 
   ctx.clearRect(0, 0, W, TEX_H);
   _rrect(ctx, 0, 0, W, TEX_H, 22, 'rgba(15,17,30,0.94)');
   _rrect(ctx, 1, 1, W - 2, TEX_H - 2, 21, null, 'rgba(80,70,180,0.45)', 1.5);
 
-  // Title
   ctx.fillStyle = '#e8eaf0';
   ctx.font = 'bold 20px system-ui,sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('ModelSpace', W / 2, 36);
+  ctx.fillText('ModelSpace', W / 2, 32);
 
-  // Hint
   ctx.fillStyle = 'rgba(124,130,160,0.7)';
   ctx.font = '11px system-ui,sans-serif';
-  ctx.fillText('X menu · Y anim · A/B height · stick move/turn', W / 2, 56);
+  ctx.fillText('Trigger selects  ·  X menu  ·  sticks move', W / 2, 50);
 
-  const gq = vs.graphicsQuality || 'medium';
-  const rot = vs.rotation || { x: 0, y: 0, z: 0 };
-
-  // Section labels
   ctx.textAlign = 'left';
   ctx.font = '11px system-ui,sans-serif';
   ctx.fillStyle = '#7c82a0';
 
-  if (vs.hasAnimation) {
-    ctx.fillText('ANIMATION', PAD, sections.animLabelY);
+  if (sections.animLabelY) ctx.fillText('ANIMATION', PAD, sections.animLabelY);
+  if (sections.expLabelY) ctx.fillText('EXPOSURE', PAD, sections.expLabelY);
+  if (sections.scaleLabelY) ctx.fillText('SCALE', PAD, sections.scaleLabelY);
+  if (sections.rotLabelY) {
+    ctx.fillText(
+      `ROTATION   ${Math.round(rot.x || 0)}°   ${Math.round(rot.y || 0)}°   ${Math.round(rot.z || 0)}°`,
+      PAD, sections.rotLabelY,
+    );
+  }
+  if (sections.posLabelY) ctx.fillText(sections.posLabel, PAD, sections.posLabelY);
+  if (sections.gfxLabelY) {
+    const gfxHint = gq === 'low' ? 'smoother' : gq === 'high' ? 'sharper' : 'balanced';
+    ctx.fillText(`GRAPHICS  ·  ${gfxHint}`, PAD, sections.gfxLabelY);
+  }
+  if (sections.blockLabelY) ctx.fillText(sections.blockLabel, PAD, sections.blockLabelY);
+
+  if (sections.expBar) _paintValueBar(ctx, sections.expBar, Math.min(Math.max(Number(vs.exposure) / 4, 0), 1), '#6c63ff', Number(vs.exposure).toFixed(2));
+  if (sections.scaleBar) {
+    const sFrac = vs.modelScale > 1 ? Math.min(Math.log10(vs.modelScale) / Math.log10(500), 1) : 0;
+    const sLabel = vs.modelScale
+      ? (vs.modelScale < 0.1 ? vs.modelScale.toFixed(3) : vs.modelScale.toFixed(2)) + '×'
+      : '—';
+    _paintValueBar(ctx, sections.scaleBar, sFrac, '#4caf81', sLabel);
   }
 
-  ctx.fillText('EXPOSURE', PAD, sections.expLabelY);
-  ctx.fillText('SCALE', PAD, sections.scaleLabelY);
-  ctx.fillText(
-    `ROTATION  ${Math.round(rot.x || 0)}° / ${Math.round(rot.y || 0)}° / ${Math.round(rot.z || 0)}°`,
-    PAD,
-    sections.rotLabelY,
-  );
-  const gfxHint = gq === 'low' ? 'smoother' : gq === 'high' ? 'sharper' : 'balanced';
-  ctx.fillText(`GRAPHICS  ·  ${gfxHint}`, PAD, sections.gfxLabelY);
+  for (const row of sections.rows || []) _paintBlockRow(ctx, row, hoverId);
 
-  // Value bars (exposure / scale)
-  const expFrac = Math.min(Math.max(Number(vs.exposure) / 4, 0), 1);
-  const eb = sections.expBar;
-  _rrect(ctx, eb.x, eb.y, eb.w, eb.h, 10, 'rgba(46,50,72,0.9)');
-  if (expFrac > 0) {
-    _rrect(ctx, eb.x + 3, eb.y + 3, Math.max(0, (eb.w - 6) * expFrac), eb.h - 6, 8, '#6c63ff');
-  }
-  ctx.fillStyle = '#e8eaf0';
-  ctx.font = 'bold 14px system-ui,sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(Number(vs.exposure).toFixed(2), eb.x + eb.w / 2, eb.y + eb.h / 2 + 5);
-
-  const sb = sections.scaleBar;
-  _rrect(ctx, sb.x, sb.y, sb.w, sb.h, 10, 'rgba(46,50,72,0.9)');
-  if (vs.modelScale > 1) {
-    const sFrac = Math.min(Math.log10(vs.modelScale) / Math.log10(500), 1);
-    _rrect(ctx, sb.x + 3, sb.y + 3, Math.max(0, (sb.w - 6) * sFrac), sb.h - 6, 8, '#4caf81');
-  }
-  const sLabel = vs.modelScale
-    ? (vs.modelScale < 0.1 ? vs.modelScale.toFixed(3) : vs.modelScale.toFixed(2)) + '×'
-    : '—';
-  ctx.fillStyle = '#e8eaf0';
-  ctx.font = 'bold 14px system-ui,sans-serif';
-  ctx.fillText(sLabel, sb.x + sb.w / 2, sb.y + sb.h / 2 + 5);
-
-  // Buttons
   for (const btn of layout.buttons) {
-    const hov = btn.id === hoverId;
-    const gfxActive =
-      (btn.id === 'gfx_low'  && gq === 'low') ||
-      (btn.id === 'gfx_med'  && gq === 'medium') ||
-      (btn.id === 'gfx_high' && gq === 'high');
-    const active = hov || gfxActive;
-    let fill = active ? '#6c63ff' : 'rgba(36,39,54,0.95)';
-    let stroke = active ? '#9088ff' : 'rgba(80,84,120,0.55)';
-    if (btn.danger) {
-      fill = hov ? '#c44a4a' : 'rgba(120,36,36,0.95)';
-      stroke = hov ? '#ff8888' : 'rgba(180,80,80,0.65)';
-    }
-    _rrect(ctx, btn.x, btn.y, btn.w, btn.h, 10, fill, stroke, 1.5);
-    ctx.fillStyle = '#e8eaf0';
-    ctx.font = `${active || (btn.danger && hov) ? 'bold ' : ''}13px system-ui,sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 5);
+    if (btn.custom) continue;
+    _paintBtn(ctx, btn, hoverId, gq);
   }
 
-  // Footer
-  ctx.fillStyle = 'rgba(124,130,160,0.7)';
+  if (sections.pagerLabel) {
+    ctx.fillStyle = '#e8eaf0';
+    ctx.font = '13px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(sections.pagerLabel, W / 2, sections.pagerY + 21);
+  }
+
+  ctx.fillStyle = 'rgba(124,130,160,0.75)';
   ctx.font = '12px system-ui,sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(vs.isPlaying ? '▶  Playing' : '⏸  Paused', W / 2, sections.footerY);
 
   texture.needsUpdate = true;
   state.dirty = false;
+}
+
+function _paintValueBar(ctx, bar, frac, color, label) {
+  _rrect(ctx, bar.x, bar.y, bar.w, bar.h, 10, 'rgba(46,50,72,0.9)');
+  if (frac > 0) _rrect(ctx, bar.x + 3, bar.y + 3, Math.max(0, (bar.w - 6) * frac), bar.h - 6, 8, color);
+  ctx.fillStyle = '#e8eaf0';
+  ctx.font = 'bold 14px system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, bar.x + bar.w / 2, bar.y + bar.h / 2 + 5);
+}
+
+function _paintBtn(ctx, btn, hoverId, gq) {
+  const hov = btn.id === hoverId;
+  const gfxActive =
+    (btn.id === 'gfx_low' && gq === 'low') ||
+    (btn.id === 'gfx_med' && gq === 'medium') ||
+    (btn.id === 'gfx_high' && gq === 'high');
+  const active = hov || gfxActive || !!btn.active;
+  let fill = active ? '#6c63ff' : 'rgba(36,39,54,0.95)';
+  let stroke = active ? '#9088ff' : 'rgba(80,84,120,0.55)';
+  if (btn.danger) {
+    fill = hov ? '#c44a4a' : 'rgba(120,36,36,0.95)';
+    stroke = hov ? '#ff8888' : 'rgba(180,80,80,0.65)';
+  }
+  if (btn.dim && !hov) {
+    fill = 'rgba(28,30,42,0.7)';
+    stroke = 'rgba(70,74,100,0.35)';
+  }
+  _rrect(ctx, btn.x, btn.y, btn.w, btn.h, 10, fill, stroke, 1.5);
+  ctx.fillStyle = btn.dim && !hov ? 'rgba(232,234,240,0.45)' : '#e8eaf0';
+  ctx.font = `${active || (btn.danger && hov) ? 'bold ' : ''}13px system-ui,sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 5);
+}
+
+function _blockStatusText(row) {
+  if (row.status === 'queued') return 'Waiting';
+  if (row.status === 'loading') return `${Math.round((row.progress || 0) * 100)}%`;
+  if (row.status === 'preparing') return 'Preparing';
+  if (row.status === 'shown') return 'Visible';
+  if (row.status === 'ready') return 'Ready';
+  if (row.status === 'error') return 'Failed';
+  return 'Not downloaded';
+}
+
+function _paintBlockRow(ctx, row, hoverId) {
+  const stroke = row.shown ? 'rgba(108,99,255,0.75)' : 'rgba(80,84,120,0.45)';
+  const fill = row.shown ? 'rgba(108,99,255,0.14)' : 'rgba(20,22,34,0.85)';
+  _rrect(ctx, row.x, row.y, row.w, row.h, 10, fill, stroke, 1.5);
+
+  const nameX = row.toggle.x + row.toggle.w + 8;
+  const nameW = row.action.x - nameX - 8;
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 13px system-ui,sans-serif';
+  ctx.fillStyle = '#e8eaf0';
+  ctx.fillText(_fitText(ctx, row.label, nameW), nameX, row.y + 20);
+
+  ctx.font = '11px system-ui,sans-serif';
+  const confirming = row.action.label === 'Sure?';
+  ctx.fillStyle = confirming || row.status === 'error' ? '#e05c5c' : row.status === 'ready' ? '#4caf81' : '#7c82a0';
+  ctx.fillText(
+    confirming ? _fitText(ctx, 'Confirm delete — must redownload', nameW) : _blockStatusText(row),
+    nameX,
+    row.y + 36,
+  );
+
+  if (!row.toggle.enabled) {
+    _rrect(ctx, row.toggle.x, row.toggle.y, row.toggle.w, row.toggle.h, 8, 'rgba(20,22,32,0.6)', 'rgba(70,74,100,0.35)', 1);
+    ctx.fillStyle = 'rgba(232,234,240,0.35)';
+    ctx.font = '12px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Show', row.toggle.x + row.toggle.w / 2, row.toggle.y + row.toggle.h / 2 + 4);
+  }
+  _paintBtn(ctx, row.action, hoverId, '');
+  if (row.toggle.enabled) _paintBtn(ctx, row.toggle, hoverId, '');
+}
+
+function _fitText(ctx, text, maxW) {
+  const raw = String(text || '');
+  if (ctx.measureText(raw).width <= maxW) return raw;
+  let t = raw;
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > maxW) t = t.slice(0, -1);
+  return `${t}…`;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -658,23 +853,54 @@ function _firePanelClick(ctrl, panelState, actions) {
   const id = panelState.hoverId;
   const vs = actions.getViewerState();
 
-  switch (id) {
-    case 'play':        actions.playAnim();                                     break;
-    case 'pause':       actions.pauseAnim();                                    break;
-    case 'rewind':      actions.rewindAnim();                                   break;
-    case 'exp_down':    actions.setExposure(Math.max(0,  vs.exposure - 0.25)); break;
-    case 'exp_up':      actions.setExposure(Math.min(4,  vs.exposure + 0.25)); break;
-    case 'scale_down':  actions.scaleDown();                                    break;
-    case 'scale_up':    actions.scaleUp();                                      break;
-    case 'rot_x_neg':   actions.nudgeRotation('x', -90);                        break;
-    case 'rot_x_pos':   actions.nudgeRotation('x',  90);                        break;
-    case 'rot_y_neg':   actions.nudgeRotation('y', -90);                        break;
-    case 'rot_y_pos':   actions.nudgeRotation('y',  90);                        break;
-    case 'gfx_low':     actions.setGraphicsQuality('low');                      break;
-    case 'gfx_med':     actions.setGraphicsQuality('medium');                   break;
-    case 'gfx_high':    actions.setGraphicsQuality('high');                     break;
-    case 'close_panel': actions.showPanel(false);                               break;
-    case 'exit_vr':     actions.exitVR();                                       break;
+  if (id === 'tab_model' || id === 'tab_blocks') {
+    _panelTab = id === 'tab_blocks' ? 'blocks' : 'model';
+    _armDeleteRel = null;
+  } else if (id === 'ply_page_prev') {
+    _blockPage = Math.max(0, _blockPage - 1);
+    _armDeleteRel = null;
+  } else if (id === 'ply_page_next') {
+    _blockPage += 1;
+    _armDeleteRel = null;
+  } else if (id.startsWith('ply:')) {
+    const parts = id.split(':');
+    const cmd = parts[1];
+    const rel = parts.slice(2).join(':');
+    if (cmd === 'delete' && _armDeleteRel !== rel) {
+      _armDeleteRel = rel;
+    } else {
+      if (cmd === 'delete') _armDeleteRel = null;
+      else _armDeleteRel = null;
+      actions.plyCommand(cmd, rel);
+    }
+  } else {
+    _armDeleteRel = null;
+    switch (id) {
+      case 'play':        actions.playAnim();                                     break;
+      case 'pause':       actions.pauseAnim();                                    break;
+      case 'rewind':      actions.rewindAnim();                                   break;
+      case 'exp_down':    actions.setExposure(Math.max(0,  vs.exposure - 0.25)); break;
+      case 'exp_up':      actions.setExposure(Math.min(4,  vs.exposure + 0.25)); break;
+      case 'scale_down':  actions.scaleDown();                                    break;
+      case 'scale_up':    actions.scaleUp();                                      break;
+      case 'rot_x_neg':   actions.nudgeRotation('x', -90);                        break;
+      case 'rot_x_pos':   actions.nudgeRotation('x',  90);                        break;
+      case 'rot_y_neg':   actions.nudgeRotation('y', -90);                        break;
+      case 'rot_y_pos':   actions.nudgeRotation('y',  90);                        break;
+      case 'pos_x_neg':   actions.nudgePosition('x', -0.5);                       break;
+      case 'pos_x_pos':   actions.nudgePosition('x',  0.5);                       break;
+      case 'pos_y_neg':   actions.nudgePosition('y', -0.5);                       break;
+      case 'pos_y_pos':   actions.nudgePosition('y',  0.5);                       break;
+      case 'pos_z_neg':   actions.nudgePosition('z', -0.5);                       break;
+      case 'pos_z_pos':   actions.nudgePosition('z',  0.5);                       break;
+      case 'pos_reset':   actions.resetPosition();                                break;
+      case 'gfx_low':     actions.setGraphicsQuality('low');                      break;
+      case 'gfx_med':     actions.setGraphicsQuality('medium');                   break;
+      case 'gfx_high':    actions.setGraphicsQuality('high');                     break;
+      case 'close_panel': actions.showPanel(false);                               break;
+      case 'exit_vr':     actions.exitVR();                                       break;
+      default: break;
+    }
   }
   panelState.dirty = true;
   _haptic(ctrl);
